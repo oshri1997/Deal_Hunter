@@ -1,6 +1,7 @@
 import logging
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
@@ -19,65 +20,92 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "\u2139\ufe0f *Usage:* `/compare Game Title`\n"
-            "Example: `/compare God of War Ragnarok`",
-            parse_mode="MarkdownV2",
+            "ℹ️ Usage: /compare Game Title\n"
+            "Example: /compare God of War Ragnarok"
         )
         return
 
     game_query = " ".join(context.args).strip()
 
     async with get_session() as session:
-        # Find matching games
-        result = await session.execute(
-            select(Game).where(Game.title.ilike(f"%{game_query}%")).limit(1)
-        )
-        game = result.scalar_one_or_none()
-
-        if not game:
-            await update.message.reply_text(
-                f"\u26a0\ufe0f No game found matching *{_escape_md(game_query)}*\\.\n"
-                "Try a different search term\\.",
-                parse_mode="MarkdownV2",
-            )
-            return
-
-        # Get active deals for this game across all regions
+        # Search for deals by game title across all regions
         result = await session.execute(
             select(ActiveDeal)
-            .where(ActiveDeal.game_id == game.id)
-            .order_by(ActiveDeal.price.asc())
+            .join(Game)
+            .where(Game.title.ilike(f"%{game_query}%"))
+            .options(selectinload(ActiveDeal.game))
         )
         deals = result.scalars().all()
-
+        
         if not deals:
             await update.message.reply_text(
-                f"\u26a0\ufe0f *{_escape_md(game.title)}* has no active deals right now\\.",
-                parse_mode="MarkdownV2",
+                f"⚠️ No deals found for '{game_query}'.\n"
+                "Try a different search term."
+            )
+            return
+        
+        # Get the game title (use first deal's game title)
+        game_title = deals[0].game.title
+
+        # Currency conversion rates to ILS
+        conversion_to_ils = {
+            "ILS": 1.0,
+            "USD": 3.7,   # 1 USD = 3.7 ILS
+            "INR": 0.0341, # 1 INR = 0.0341 ILS
+        }
+
+        # Convert all prices to ILS and sort
+        deals_with_ils = []
+        for deal in deals:
+            rate = conversion_to_ils.get(deal.currency, 1.0)
+            price_in_ils = float(deal.price) * rate
+            deals_with_ils.append((deal, price_in_ils))
+        
+        # Sort by ILS price
+        deals_with_ils.sort(key=lambda x: x[1])
+
+        lines = [f"📊 <b>Price Comparison: {game_title}</b>\n"]
+
+        if not deals_with_ils:
+            await update.message.reply_text(
+                f"⚠️ {game_title} has no active deals in any region right now."
             )
             return
 
-        lines = [f"\U0001f4ca *Price Comparison: {_escape_md(game.title)}*\n"]
-
-        cheapest = deals[0]
-        for deal in deals:
+        cheapest = deals_with_ils[0][0]
+        
+        # Show all regions (with and without deals)
+        regions_with_deals = {deal.region_code for deal, _ in deals_with_ils}
+        
+        # First show regions with deals (sorted by price)
+        for deal, price_ils in deals_with_ils:
             region_info = config.REGIONS.get(deal.region_code, {})
             flag = region_info.get("flag", "")
             name = region_info.get("name", deal.region_code)
-            symbol = region_info.get("currency_symbol", "$")
+            currency = region_info.get("currency", "USD")
 
-            marker = " \U0001f44d CHEAPEST" if deal == cheapest else ""
+            marker = " 👍 <b>CHEAPEST</b>" if deal == cheapest else ""
             lines.append(
-                f"{flag} *{_escape_md(name)}:* {symbol}{deal.price:.2f} "
-                f"\\(\\-{deal.discount_percent}%\\){_escape_md(marker)}"
+                f"{flag} <b>{name}:</b> {deal.price} {currency} "
+                f"(~{price_ils:.0f} ₪) "
+                f"(-{deal.discount_percent}%){marker}"
             )
+        
+        # Then show regions without deals
+        for region_code, region_info in config.REGIONS.items():
+            if region_code not in regions_with_deals:
+                flag = region_info.get("flag", "")
+                name = region_info.get("name", region_code)
+                lines.append(
+                    f"{flag} <b>{name}:</b> <i>No deal available</i>"
+                )
 
         lines.append(
-            f"\n\U0001f4a1 Best deal: {config.REGIONS.get(cheapest.region_code, {}).get('flag', '')} "
-            f"{_escape_md(config.REGIONS.get(cheapest.region_code, {}).get('name', ''))}"
+            f"\n💡 Best deal: {config.REGIONS.get(cheapest.region_code, {}).get('flag', '')} "
+            f"{config.REGIONS.get(cheapest.region_code, {}).get('name', '')}"
         )
 
-    await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 compare_handler = CommandHandler("compare", _compare)
