@@ -1,0 +1,10 @@
+python-telegram-bot[ext]>=20.7
+aiohttp>=3.9
+beautifulsoup4>=4.12
+sqlalchemy[asyncio]>=2.0
+asyncpg>=0.29
+alembic>=1.13
+redis>=5.0
+apscheduler>=3.10
+matplotlib>=3.8
+python-dotenv>=1.0
