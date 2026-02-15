@@ -7,6 +7,7 @@ load_dotenv()
 class Config:
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    ADMIN_USER_ID: int = int(os.getenv("ADMIN_USER_ID", "0"))  # Your Telegram user ID
 
     # Database
     DATABASE_URL: str = os.getenv(

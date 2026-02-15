@@ -23,7 +23,7 @@ class ScraperManager:
         """Scrape deals from all supported regions using PSPrices.
 
         Args:
-            full_scrape: If True, scrape many pages. If False, scrape 10 pages per region.
+            full_scrape: If True, scrape 50 pages. If False, scrape 2 pages per region.
         """
         all_new_deals: list[tuple[str, any]] = []
 
@@ -33,9 +33,9 @@ class ScraperManager:
         async def _scrape_region(region_code: str):
             async with semaphore:
                 try:
-                    # TEST: Only 2 pages for Israel and India
-                    if region_code in ["IL", "IN"]:
-                        max_pages = 2
+                    # Only scrape IL, IN, and US
+                    if region_code in ["IL", "IN", "US"]:
+                        max_pages = 50 if full_scrape else 2
                     else:
                         max_pages = 0  # Skip other regions
                     
@@ -137,20 +137,19 @@ class ScraperManager:
                     )
                     session.add(active_deal)
                 else:
-                    if (existing_deal.price != deal.price or 
-                        existing_deal.discount_percent != deal.discount_percent or
-                        existing_deal.sale_end_date != deal.sale_end_date or
-                        existing_deal.price_tag != deal.price_tag or
-                        existing_deal.page_number != deal.page_number or
-                        existing_deal.position_on_page != deal.position_on_page):
+                    # Check if price or discount changed (real changes)
+                    if (float(existing_deal.price) != float(deal.price) or 
+                        existing_deal.discount_percent != deal.discount_percent):
                         is_new = True
-                        existing_deal.price = deal.price
-                        existing_deal.original_price = deal.original_price
-                        existing_deal.discount_percent = deal.discount_percent
-                        existing_deal.sale_end_date = deal.sale_end_date
-                        existing_deal.price_tag = deal.price_tag
-                        existing_deal.page_number = deal.page_number
-                        existing_deal.position_on_page = deal.position_on_page
+                    
+                    # Always update all fields
+                    existing_deal.price = deal.price
+                    existing_deal.original_price = deal.original_price
+                    existing_deal.discount_percent = deal.discount_percent
+                    existing_deal.sale_end_date = deal.sale_end_date
+                    existing_deal.price_tag = deal.price_tag
+                    existing_deal.page_number = deal.page_number
+                    existing_deal.position_on_page = deal.position_on_page
                 
                 # Add price history
                 price_record = Price(

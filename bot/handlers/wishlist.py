@@ -55,6 +55,7 @@ async def _watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         session.add(UserWishlist(user_id=user.id, game_id=game.id))
+        await session.commit()
 
     await update.message.reply_text(
         f"\u2705 Added *{_escape_md(game.title)}* to your watchlist\\!\n"
@@ -100,6 +101,7 @@ async def _unwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game = await session.get(Game, entry.game_id)
         title = game.title if game else game_query
         await session.delete(entry)
+        await session.commit()
 
     await update.message.reply_text(
         f"\u274c Removed *{_escape_md(title)}* from your watchlist\\.",

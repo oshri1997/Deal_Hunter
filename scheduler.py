@@ -52,7 +52,7 @@ class DealScheduler:
         )
         
         self.scheduler.start()
-        logger.info("Scheduler started - Daily scrape at 02:00 (5 pages), Amazon check every 3 hours")
+        logger.info("Scheduler started - Daily scrape at 02:00 (2 pages), Amazon check every 3 hours")
         
         if run_initial_scrape:
             self.scheduler.add_job(
@@ -72,13 +72,13 @@ class DealScheduler:
         logger.info("Starting initial full scrape (50 pages per region)")
         try:
             new_deals = await self.scraper_manager.scrape_all_regions(full_scrape=True)
-            logger.info(f"Initial scrape complete: {len(new_deals)} deals found")
+            logger.info(f"Initial scrape complete: {len(new_deals)} new deals found")
         except Exception as e:
             logger.error(f"Error in initial scrape: {e}", exc_info=True)
     
     async def _scrape_and_notify(self):
-        """Daily scrape (5 pages) and notifications"""
-        logger.info("Starting daily scraping job (5 pages per region)")
+        """Daily scrape (2 pages) and notifications"""
+        logger.info("Starting daily scraping job (2 pages per region)")
         try:
             new_deals = await self.scraper_manager.scrape_all_regions(full_scrape=False)
             logger.info(f"Found {len(new_deals)} new/updated deals")
@@ -105,11 +105,18 @@ class DealScheduler:
         try:
             is_available, message = await self.amazon_checker.check_availability()
             
-            # Notify if status changed to available
+            # Notify admin if status changed to available
             if is_available and self.amazon_checker.last_status != True:
                 logger.info(f"🎮 Amazon gift card NOW AVAILABLE!")
-                # Broadcast to all admins who used /check_amazon
-                # For now just log it
+                if config.ADMIN_USER_ID:
+                    try:
+                        await self.bot.send_message(
+                            chat_id=config.ADMIN_USER_ID,
+                            text=f"🎮 <b>Amazon Gift Card Alert!</b>\n\n{message}\n\n🔗 https://www.amazon.in/Playstation-Gift-Redeemable-Flat-Cashback/dp/B0C1H473H8",
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send Amazon alert to admin: {e}")
             else:
                 logger.info(f"Amazon status: {message}")
             

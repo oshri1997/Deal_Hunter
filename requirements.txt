@@ -8,3 +8,7 @@ redis>=5.0
 apscheduler>=3.10
 matplotlib>=3.8
 python-dotenv>=1.0
+cloudscraper>=1.2.71
+pytest>=7.4
+pytest-asyncio>=0.21
+pytest-cov>=4.1

@@ -268,36 +268,53 @@ class PSPricesScraper:
 
             # ---- Discount badge  (e.g. "−70%") ----
             discount_el = card.select_one(".bg-red-700, .bg-red-600")
-            if not discount_el:
-                return None
-            disc_match = re.search(r"(\d+)", discount_el.get_text(strip=True))
-            if not disc_match:
-                return None
-            discount_percent = int(disc_match.group(1))
+            discount_percent = 0
+            
+            if discount_el:
+                disc_match = re.search(r"(\d+)", discount_el.get_text(strip=True))
+                if disc_match:
+                    discount_percent = int(disc_match.group(1))
 
             # ---- Sale price ----
             # Structure: <span class="text-xl font-bold"> ... <span class="font-bold">1,799</span>
             price_container = card.select_one(".text-xl.font-bold")
             if not price_container:
                 return None
-            price_span = price_container.select_one("span.font-bold")
-            if not price_span:
+            
+            # Check if it's a free game
+            is_free = False
+            price_text = price_container.get_text(strip=True)
+            if "free" in price_text.lower():
+                is_free = True
+                discount_percent = 100
+            
+            # Skip if no discount and not free
+            if discount_percent == 0 and not is_free:
                 return None
-            price = self._parse_price(price_span.get_text(strip=True))
-            if price is None:
-                return None
-
-            # ---- Original price ----
-            orig_el = card.select_one(".old-price-strike")
-            original_price = (
-                self._parse_price(orig_el.get_text(strip=True)) if orig_el else None
-            )
-            # If original price is missing or "N/A", compute from discount
-            if not original_price or original_price <= 0:
-                if discount_percent > 0 and discount_percent < 100:
-                    original_price = round(price / (1 - discount_percent / 100), 2)
-                else:
-                    original_price = price
+            
+            # Parse price
+            if is_free:
+                price = 0.0
+                original_price = 0.0  # Will be calculated later if needed
+            else:
+                price_span = price_container.select_one("span.font-bold")
+                if not price_span:
+                    return None
+                price = self._parse_price(price_span.get_text(strip=True))
+                if price is None:
+                    return None
+                
+                # ---- Original price ----
+                orig_el = card.select_one(".old-price-strike")
+                original_price = (
+                    self._parse_price(orig_el.get_text(strip=True)) if orig_el else None
+                )
+                # If original price is missing or "N/A", compute from discount
+                if not original_price or original_price <= 0:
+                    if discount_percent > 0 and discount_percent < 100:
+                        original_price = round(price / (1 - discount_percent / 100), 2)
+                    else:
+                        original_price = price
 
             if price >= original_price:
                 # Safety check — should be a discount

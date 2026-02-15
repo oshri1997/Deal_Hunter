@@ -36,12 +36,12 @@ async def _get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _scrape_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Trigger immediate scrape (5 pages)"""
+    """Trigger immediate scrape (2 pages)"""
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("⛔ Admin only command")
         return
     
-    await update.message.reply_text("🔄 Starting scrape (5 pages per region)...")
+    await update.message.reply_text("🔄 Starting scrape (2 pages per region)...")
     
     try:
         new_deals = await scraper_manager.scrape_all_regions(full_scrape=False)
