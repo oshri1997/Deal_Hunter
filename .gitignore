@@ -14,3 +14,6 @@ venv/
 .vscode/
 *.db
 *.sqlite3
+coverage.xml
+htmlcov/
+.coverage

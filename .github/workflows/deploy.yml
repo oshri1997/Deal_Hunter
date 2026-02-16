@@ -1,10 +1,8 @@
-name: Tests
+name: Deploy
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
   test:
@@ -52,17 +50,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run unit tests
-        run: python -m pytest tests/test_config.py tests/test_helpers.py tests/test_scraper.py -v
+      - name: Run tests
+        run: python -m pytest tests/ -v
 
-      - name: Run integration tests
-        run: python -m pytest tests/test_sanity.py -v
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
 
-      - name: Run all tests with coverage
-        run: python -m pytest tests/ --cov=bot --cov=database --cov=scraper --cov=config --cov-report=xml --cov-report=term
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Deploy to Railway
+        uses: bervProject/railway-deploy@main
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: ${{ secrets.RAILWAY_SERVICE_ID }}
