@@ -28,6 +28,9 @@ class NotificationEngine:
         logger.info(f"Processing {len(deals)} new deals for notifications")
 
         async with get_session() as session:
+            # First, update placeholder games to real games
+            await self._update_placeholder_games(session, deals)
+            
             for deal in deals:
                 sent_user_ids = set()
 
@@ -128,6 +131,37 @@ class NotificationEngine:
                     await asyncio.sleep(0.05)
 
             logger.info(f"Triggered {triggered_count} price alerts")
+
+    async def _update_placeholder_games(self, session, deals: List[ActiveDeal]):
+        """Update placeholder games to real games when they match"""
+        # Get all placeholder games in wishlists
+        placeholder_result = await session.execute(
+            select(UserWishlist, Game)
+            .join(Game, UserWishlist.game_id == Game.id)
+            .where(Game.id.like("search_%"))
+        )
+        placeholders = placeholder_result.all()
+        
+        if not placeholders:
+            return
+        
+        updated_count = 0
+        for deal in deals:
+            game = await session.get(Game, deal.game_id)
+            if not game:
+                continue
+            
+            # Check if any placeholder matches this game
+            for wishlist, placeholder_game in placeholders:
+                # Check if placeholder title is in real game title
+                if placeholder_game.title.lower() in game.title.lower():
+                    logger.info(f"Updating placeholder '{placeholder_game.title}' to real game '{game.title}'")
+                    wishlist.game_id = game.id
+                    updated_count += 1
+        
+        if updated_count > 0:
+            await session.commit()
+            logger.info(f"Updated {updated_count} placeholder games to real games")
 
     async def _send_deal_notification(self, user: User, deal: ActiveDeal, game: Game, is_wishlist: bool):
         """Send individual deal notification with store links"""

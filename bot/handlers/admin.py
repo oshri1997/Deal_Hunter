@@ -101,6 +101,7 @@ async def _check_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"❌ <b>Not Available</b>\n\n"
                 f"Status: {message}\n\n"
+                f"🔗 Link: {amazon_checker.URL}\n\n"
                 f"🔔 You'll be notified when it's back in stock!",
                 parse_mode='HTML'
             )

@@ -27,12 +27,23 @@ async def _watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_query = " ".join(context.args).strip()
 
     async with get_session() as session:
-        # Search for the game in our database
+        # Search for the game in our database with fuzzy matching
         result = await session.execute(
-            select(Game).where(Game.title.ilike(f"%{game_query}%")).limit(1)
+            select(Game).where(Game.title.ilike(f"%{game_query}%")).limit(10)
         )
-        game = result.scalar_one_or_none()
-
+        games = result.scalars().all()
+        
+        # Try to find best match
+        game = None
+        if games:
+            # Prefer exact match or closest match
+            for g in games:
+                if game_query.lower() in g.title.lower():
+                    game = g
+                    break
+            if not game:
+                game = games[0]
+        
         if not game:
             # Create a placeholder game entry
             game_id = f"search_{game_query.lower().replace(' ', '_')[:50]}"
