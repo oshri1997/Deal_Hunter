@@ -71,7 +71,8 @@ async def _unwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "\u2139\ufe0f *Usage:* `/unwatch Game Title`",
+            "\u2139\ufe0f *Usage:* `/unwatch Game Title` or `/unwatch <number>`\n"
+            "Example: `/unwatch God of War` or `/unwatch 1`",
             parse_mode="MarkdownV2",
         )
         return
@@ -79,32 +80,66 @@ async def _unwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_query = " ".join(context.args).strip()
 
     async with get_session() as session:
-        # Find matching wishlist entries
+        # Check if it's a number (index)
+        if game_query.isdigit():
+            index = int(game_query) - 1
+            result = await session.execute(
+                select(UserWishlist)
+                .where(UserWishlist.user_id == user.id)
+                .order_by(UserWishlist.added_at.desc())
+            )
+            entries = result.scalars().all()
+            
+            if index < 0 or index >= len(entries):
+                await update.message.reply_text(
+                    f"\u26a0\ufe0f Invalid number\\. Use `/watchlist` to see your games\\.",
+                    parse_mode="MarkdownV2",
+                )
+                return
+            
+            entry = entries[index]
+            game = await session.get(Game, entry.game_id)
+            title = game.title if game else entry.game_id
+            await session.delete(entry)
+            await session.commit()
+            
+            await update.message.reply_text(
+                f"\u274c Removed *{_escape_md(title)}* from your watchlist\\.",
+                parse_mode="MarkdownV2",
+            )
+            return
+        
+        # Search by game title or game_id
         result = await session.execute(
-            select(UserWishlist)
-            .join(Game)
+            select(UserWishlist, Game)
+            .join(Game, UserWishlist.game_id == Game.id)
             .where(
                 UserWishlist.user_id == user.id,
-                Game.title.ilike(f"%{game_query}%"),
             )
         )
-        entry = result.scalar_one_or_none()
-
-        if not entry:
+        entries = result.all()
+        
+        # Find matching entry
+        matched_entry = None
+        for wishlist_entry, game in entries:
+            if (game_query.lower() in game.title.lower() or 
+                game_query.lower() in game.id.lower()):
+                matched_entry = wishlist_entry
+                matched_game = game
+                break
+        
+        if not matched_entry:
             await update.message.reply_text(
                 f"\u26a0\ufe0f *{_escape_md(game_query)}* is not on your watchlist\\.",
                 parse_mode="MarkdownV2",
             )
             return
 
-        # Get title before deleting
-        game = await session.get(Game, entry.game_id)
-        title = game.title if game else game_query
-        await session.delete(entry)
+        await session.delete(matched_entry)
         await session.commit()
 
     await update.message.reply_text(
-        f"\u274c Removed *{_escape_md(title)}* from your watchlist\\.",
+        f"\u274c Removed *{_escape_md(matched_game.title)}* from your watchlist\\.",
         parse_mode="MarkdownV2",
     )
 
@@ -134,9 +169,11 @@ async def _watchlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, entry in enumerate(entries, 1):
             game = await session.get(Game, entry.game_id)
             title = game.title if game else entry.game_id
+            # Show index number for easy removal
             lines.append(f"{i}\\. \U0001f3ae {_escape_md(title)}")
 
         lines.append(f"\n\U0001f4e6 {len(entries)} game\\(s\\) tracked")
+        lines.append(f"\n\u2139\ufe0f Use `/unwatch <number>` or `/unwatch <game name>` to remove")
 
     await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
 
