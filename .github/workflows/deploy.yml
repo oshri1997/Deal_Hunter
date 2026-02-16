@@ -60,8 +60,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to Railway
-        uses: bervProject/railway-deploy@main
-        with:
-          railway_token: ${{ secrets.RAILWAY_TOKEN }}
-          service: ${{ secrets.RAILWAY_SERVICE_ID }}
+      - name: Install Koyeb CLI
+        uses: koyeb/koyeb-cli-setup-action@v1
+
+      - name: Deploy to Koyeb
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+        run: koyeb service redeploy ${{ secrets.KOYEB_APP_NAME }}/${{ secrets.KOYEB_SERVICE_NAME }}
