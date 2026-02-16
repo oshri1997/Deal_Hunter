@@ -8,7 +8,7 @@ from bot.helpers import get_or_create_user
 logger = logging.getLogger(__name__)
 
 WELCOME_MSG = (
-    "\U0001f3ae *Welcome to PS5 Deal Hunter\\!*\n\n"
+    "🎮 *Welcome to PS5 Deal Hunter\\!*\n\n"
     "I track PlayStation Store deals across multiple regions "
     "and send you instant notifications when games go on sale\\.\n\n"
     "*Getting started:*\n"
@@ -19,17 +19,17 @@ WELCOME_MSG = (
     "/regions \\- Select your regions\n"
     "/deals \\- View current deals\n"
     "/watch \\<game\\> \\- Add game to wishlist\n"
-    "/unwatch \\<game\\> \\- Remove from wishlist\n"
+    "/unwatch \\<game\\|number\\> \\- Remove from wishlist\n"
     "/watchlist \\- View your tracked games\n"
     "/compare \\<game\\> \\- Compare prices across regions\n"
     "/alert \\<game\\> \\<price\\|discount%\\> \\- Set price alert\n"
     "/alerts \\- View your active alerts\n"
     "/search \\<game\\> \\- Search for a game\n"
-    "/check_amazon \\- Check PS gift card availability\n"
+    "/check\\_amazon \\- Check PS gift card availability\n"
     "/settings \\- Your preferences\n"
     "/donate \\- Support the bot\n"
     "/help \\- Show this message\n\n"
-    "\U0001f389 *All features are free during beta\\!*\n"
+    "🎉 *All features are free during beta\\!*\n"
     "Enjoy unlimited regions, real\\-time alerts, and price comparison\\."
 )
 
