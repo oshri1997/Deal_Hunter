@@ -84,11 +84,7 @@ async def _scrape_psp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _check_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check Amazon PlayStation gift card availability"""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Admin only command")
-        return
-    
+    """Check Amazon PlayStation gift card availability - Available to all users"""
     await update.message.reply_text("🔍 Checking Amazon gift card availability...")
     
     try:
@@ -96,15 +92,17 @@ async def _check_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if is_available:
             await update.message.reply_text(
-                f"✅ PlayStation Gift Card Available!\n\n"
+                f"✅ <b>PlayStation Gift Card Available!</b>\n\n"
                 f"Status: {message}\n\n"
-                f"🔗 {amazon_checker.URL}"
+                f"🛒 Buy now: {amazon_checker.URL}",
+                parse_mode='HTML'
             )
         else:
             await update.message.reply_text(
-                f"❌ Not Available\n\n"
+                f"❌ <b>Not Available</b>\n\n"
                 f"Status: {message}\n\n"
-                f"🔗 {amazon_checker.URL}"
+                f"🔔 You'll be notified when it's back in stock!",
+                parse_mode='HTML'
             )
     except Exception as e:
         await update.message.reply_text(f"❌ Error checking Amazon: {str(e)}")

@@ -25,6 +25,7 @@ WELCOME_MSG = (
     "/alert \\<game\\> \\<price\\|discount%\\> \\- Set price alert\n"
     "/alerts \\- View your active alerts\n"
     "/search \\<game\\> \\- Search for a game\n"
+    "/check_amazon \\- Check PS gift card availability\n"
     "/settings \\- Your preferences\n"
     "/donate \\- Support the bot\n"
     "/help \\- Show this message\n\n"
