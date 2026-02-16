@@ -52,7 +52,13 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Process each game separately
         all_lines = []
+        seen_games = set()
+        
         for game in games:
+            if game.id in seen_games:
+                continue
+            seen_games.add(game.id)
+            
             # Get all deals for this specific game
             result = await session.execute(
                 select(ActiveDeal)
@@ -105,6 +111,13 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💡 Best: {config.REGIONS.get(cheapest.region_code, {}).get('flag', '')} "
                 f"{config.REGIONS.get(cheapest.region_code, {}).get('name', '')}"
             )
+            
+            # Add PS Store link
+            from urllib.parse import quote
+            best_store_url = config.REGIONS.get(cheapest.region_code, {}).get('store_url', '')
+            if best_store_url:
+                store_link = f"{best_store_url}/search/{quote(game.title)}"
+                game_lines.append(f"🛒 <a href='{store_link}'>Buy on PS Store</a>")
             
             all_lines.extend(game_lines)
         
