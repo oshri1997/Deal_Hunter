@@ -52,17 +52,18 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Process each game separately
         all_lines = []
-        seen_games = set()
+        seen_game_titles = set()  # Track by title instead of ID
         
         for game in games:
-            if game.id in seen_games:
+            if game.title in seen_game_titles:
                 continue
-            seen_games.add(game.id)
+            seen_game_titles.add(game.title)
             
-            # Get all deals for this specific game
+            # Get all deals for games with this title (may have different IDs)
             result = await session.execute(
                 select(ActiveDeal)
-                .where(ActiveDeal.game_id == game.id)
+                .join(Game)
+                .where(Game.title == game.title)
             )
             deals = result.scalars().all()
             
