@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Koyeb CLI
-        uses: koyeb/koyeb-cli-setup-action@v1
+        run: curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sh
 
       - name: Deploy to Koyeb
         env:
