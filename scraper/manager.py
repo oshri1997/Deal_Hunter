@@ -182,14 +182,13 @@ class ScraperManager:
             logger.info("Cleaned up expired deals")
 
     async def get_active_deals(self, region_code: str, limit: int = 20) -> list[ActiveDeal]:
-        """Get deals from page 1, ordered by position on page."""
+        """Get deals from all pages, ordered by page number and position on page."""
         async with get_session() as session:
             result = await session.execute(
                 select(ActiveDeal)
                 .join(Game)
                 .where(ActiveDeal.region_code == region_code)
-                .where(ActiveDeal.page_number == 1)  # Only page 1
-                .order_by(ActiveDeal.position_on_page.asc())  # Order by position
+                .order_by(ActiveDeal.page_number.asc(), ActiveDeal.position_on_page.asc())
                 .limit(limit)
                 .options(contains_eager(ActiveDeal.game))
             )

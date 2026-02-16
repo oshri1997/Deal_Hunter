@@ -34,11 +34,20 @@ async def _show_deals_page(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     from urllib.parse import quote
 
     message_lines = ["<b>🎮 PLAYSTATION DEALS 🎮</b>\n"]
+    has_more_deals = False
 
     for region_code in regions:
-        deals = await scraper_manager.get_active_deals(region_code, limit=10)
+        # Get 11 deals to check if there are more
+        deals = await scraper_manager.get_active_deals(region_code, limit=10 + offset + 1)
+        
+        # Take only the deals for current page
+        current_deals = deals[offset:offset + 10]
+        
+        # Check if there are more deals
+        if len(deals) > offset + 10:
+            has_more_deals = True
 
-        if deals:
+        if current_deals:
             region_info = config.REGIONS.get(region_code, {})
             flag = region_info.get("flag", "")
             region_name = region_info.get("name", region_code)
@@ -49,7 +58,7 @@ async def _show_deals_page(update: Update, context: ContextTypes.DEFAULT_TYPE, r
             message_lines.append(f"<b>{flag} {region_name.upper()}</b>")
             message_lines.append(f"{'═' * 35}\n")
 
-            for i, deal in enumerate(deals, 1):
+            for i, deal in enumerate(current_deals, offset + 1):
                 # Price tag badge
                 tag_badge = ""
                 if deal.price_tag == "New lowest!":
@@ -86,16 +95,23 @@ async def _show_deals_page(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     
     message = "\n".join(message_lines)
     
+    # Add "Show More" button if there are more deals
+    keyboard = None
+    if has_more_deals:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📄 Show More", callback_data=f"deals_more_{offset + 10}")
+        ]])
+    
     if update.callback_query:
-        await update.callback_query.edit_message_text(message, parse_mode='HTML')
+        await update.callback_query.edit_message_text(message, parse_mode='HTML', reply_markup=keyboard)
     else:
-        await update.message.reply_text(message, parse_mode='HTML')
+        await update.message.reply_text(message, parse_mode='HTML', reply_markup=keyboard)
 
 
 async def _deals_more_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle 'Show More' button"""
     query = update.callback_query
-    await query.answer()
+    await query.answer("Loading more deals...")
     
     offset = int(query.data.split('_')[-1])
     regions = context.user_data.get('deals_regions', [])
