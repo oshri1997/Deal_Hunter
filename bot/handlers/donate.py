@@ -14,8 +14,6 @@ async def _donate(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "find a great deal, consider supporting development:\n\n"
         "☕ Buy me a coffee:\n"
         "   https://buymeacoffee.com/oshri1997\n\n"
-        "💳 PayPal:\n"
-        "   https://paypal.me/<YOUR_PAYPAL_USERNAME>\n\n"
         "Every contribution helps keep the bot running\n"
         "and fund new features! 🙏"
     )

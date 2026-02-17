@@ -103,7 +103,7 @@ class PSPricesScraper:
             logger.warning(f"Unsupported region for PSPrices: {region_code}")
             return []
 
-        pages = 50 if full_scrape else max_pages
+        pages = self._get_total_pages(psp_region) if full_scrape else max_pages
         all_deals: list[ScrapedDeal] = []
         seen_ids: set[str] = set()
         consecutive_empty = 0
@@ -160,6 +160,28 @@ class PSPricesScraper:
     # ------------------------------------------------------------------
     # Fetch
     # ------------------------------------------------------------------
+
+    def _get_total_pages(self, psp_region: str) -> int:
+        """Fetch page 1 and extract total page count from 'Page X of Y' span."""
+        url = (
+            f"{self.base_url}/region-{psp_region}/collection/all-discounts"
+            f"?page=1&platform=PS5%2CPS4"
+        )
+        try:
+            scraper = self._get_scraper()
+            resp = scraper.get(url, timeout=30)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                span = soup.find("span", class_=lambda c: c and "text-gray-700" in c)
+                if span:
+                    match = re.search(r"of\s+(\d+)", span.get_text())
+                    if match:
+                        total = int(match.group(1))
+                        logger.info(f"[PSPrices] {psp_region} has {total} pages")
+                        return min(total, 200)
+        except Exception as e:
+            logger.error(f"[PSPrices] Failed to get total pages: {e}")
+        return 999
 
     def _fetch_and_parse(self, url: str, region_code: str, page: int) -> list[ScrapedDeal]:
         """Synchronous fetch + parse (runs in executor).

@@ -24,12 +24,12 @@ class DealScheduler:
     
     def start(self, run_initial_scrape: bool = True):
         """Start all scheduled jobs"""
-        # Daily scrape at 02:00 (5 pages per region)
+        # Daily full scrape at 02:00
         self.scheduler.add_job(
             self._scrape_and_notify,
             trigger=CronTrigger(hour=2, minute=0),
             id="scrape_deals",
-            name="Daily scrape at 02:00 (5 pages)",
+            name="Daily scrape at 02:00 (2 pages)",
             replace_existing=True
         )
         
