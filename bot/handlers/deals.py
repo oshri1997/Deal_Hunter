@@ -3,7 +3,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CommandHandler, ContextTypes, CallbackQueryHandler
 
-from bot.helpers import get_or_create_user, get_user_regions
+from bot.helpers import get_or_create_user, get_user_regions, format_price_ils
 from scraper.manager import ScraperManager
 
 logger = logging.getLogger(__name__)
@@ -78,9 +78,11 @@ async def _show_deals_page(update: Update, context: ContextTypes.DEFAULT_TYPE, r
                 search_query = quote(deal.game.title)
                 psn_link = f"{store_url}/search/{search_query}" if store_url else ""
 
+                ils_suffix = await format_price_ils(float(deal.price), currency)
+                orig_ils_suffix = await format_price_ils(float(deal.original_price), currency)
                 message_lines.append(
                     f"<b>{i}.</b> <code>{deal.game.title}</code>{tag_badge}\n"
-                    f"    💰 <b>{deal.price} {currency}</b> <s>{deal.original_price}</s>\n"
+                    f"    💰 <b>{deal.price} {currency}{ils_suffix}</b> <s>{deal.original_price} {currency}{orig_ils_suffix}</s>\n"
                     f"    {discount_color} <b>-{deal.discount_percent}%</b> OFF\n"
                     f"    🛒 <a href='{psn_link}'>PS Store</a>\n"
                 )

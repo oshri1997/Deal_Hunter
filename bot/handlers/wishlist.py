@@ -4,7 +4,7 @@ from sqlalchemy import delete, select
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user, _escape_md
+from bot.helpers import get_or_create_user, _escape_md, smart_search_games, _words_match
 from database.engine import get_session
 from database.models import Game, UserWishlist
 
@@ -27,23 +27,9 @@ async def _watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_query = " ".join(context.args).strip()
 
     async with get_session() as session:
-        # Search for the game in our database with fuzzy matching
-        result = await session.execute(
-            select(Game).where(Game.title.ilike(f"%{game_query}%")).limit(10)
-        )
-        games = result.scalars().all()
-        
-        # Try to find best match
-        game = None
-        if games:
-            # Prefer exact match or closest match
-            for g in games:
-                if game_query.lower() in g.title.lower():
-                    game = g
-                    break
-            if not game:
-                game = games[0]
-        
+        games = await smart_search_games(session, game_query, limit=5)
+        game = games[0] if games else None
+
         if not game:
             # Create a placeholder game entry
             game_id = f"search_{game_query.lower().replace(' ', '_')[:50]}"
@@ -120,21 +106,17 @@ async def _unwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Search by game title or game_id
+        # Search by game title using smart search
         result = await session.execute(
             select(UserWishlist, Game)
             .join(Game, UserWishlist.game_id == Game.id)
-            .where(
-                UserWishlist.user_id == user.id,
-            )
+            .where(UserWishlist.user_id == user.id)
         )
         entries = result.all()
-        
-        # Find matching entry
+
         matched_entry = None
         for wishlist_entry, game in entries:
-            if (game_query.lower() in game.title.lower() or 
-                game_query.lower() in game.id.lower()):
+            if _words_match(game_query, game.title) or game_query.lower() in game.id.lower():
                 matched_entry = wishlist_entry
                 matched_game = game
                 break

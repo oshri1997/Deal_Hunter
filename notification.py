@@ -10,6 +10,8 @@ from telegram.error import TelegramError
 from database.engine import get_session
 from database.models import User, UserRegion, UserWishlist, ActiveDeal, Game, PriceAlert
 from config import config
+from bot.helpers import _words_match
+from services.exchange_rates import ExchangeRateService
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +156,7 @@ class NotificationEngine:
             # Check if any placeholder matches this game
             for wishlist, placeholder_game in placeholders:
                 # Check if placeholder title is in real game title
-                if placeholder_game.title.lower() in game.title.lower():
+                if _words_match(placeholder_game.title, game.title):
                     logger.info(f"Updating placeholder '{placeholder_game.title}' to real game '{game.title}'")
                     wishlist.game_id = game.id
                     updated_count += 1
@@ -167,22 +169,25 @@ class NotificationEngine:
         """Send individual deal notification with store links"""
         region_info = config.REGIONS.get(deal.region_code, {})
         flag = region_info.get("flag", "")
-        currency = region_info.get("currency_symbol", "")
+        currency = region_info.get("currency", "USD")
+        currency_symbol = region_info.get("currency_symbol", "")
         store_url = region_info.get("store_url", "")
 
         wishlist_tag = "⭐ WISHLIST ALERT! " if is_wishlist else ""
-
         end_date_str = deal.sale_end_date.strftime('%Y-%m-%d') if deal.sale_end_date else "Unknown"
-
-        # Build store links
         search_query = quote(game.title)
         psn_link = f"{store_url}/search/{search_query}" if store_url else ""
         cdkeys_link = f"https://www.cdkeys.com/catalogsearch/result?q={search_query}"
 
+        ils_suffix = ""
+        if currency != "ILS":
+            ils = await ExchangeRateService.convert_to_ils(float(deal.price), currency)
+            ils_suffix = f" (~{ils:.0f}₪)"
+
         message = (
             f"{wishlist_tag}{flag} New Deal in {region_info.get('name', deal.region_code)}!\n\n"
             f"🎮 {game.title}\n"
-            f"💰 {currency}{deal.price:.2f} (was {currency}{deal.original_price:.2f})\n"
+            f"💰 {currency_symbol}{deal.price:.2f}{ils_suffix} (was {currency_symbol}{deal.original_price:.2f})\n"
             f"🔥 {deal.discount_percent}% OFF\n"
             f"⏰ Ends: {end_date_str}\n\n"
             f"🛒 PS Store: {psn_link}\n"

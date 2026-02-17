@@ -1,11 +1,14 @@
 """Shared helpers for bot handlers."""
+import re
+import unicodedata
 from datetime import datetime
 
 from sqlalchemy import select
 
 from config import config
 from database.engine import get_session
-from database.models import User, UserRegion
+from database.models import Game, User, UserRegion
+from services.exchange_rates import ExchangeRateService
 
 
 async def get_or_create_user(telegram_user) -> User:
@@ -83,3 +86,74 @@ def _escape_md(text: str) -> str:
         else:
             escaped += char
     return escaped
+
+
+# --- Smart Search ---
+
+def _normalize_title(title: str) -> str:
+    """Normalize a game title for matching: strip ™®©, normalize unicode, lowercase."""
+    title = re.sub(r'[™®©]', '', title)
+    title = unicodedata.normalize('NFKD', title)
+    return title.lower().strip()
+
+
+def _words_match(query: str, title: str) -> bool:
+    """Check if ALL words in query appear in title (any order).
+
+    >>> _words_match("FC 26", "EA SPORTS FC™ 26")
+    True
+    """
+    normalized_title = _normalize_title(title)
+    query_words = _normalize_title(query).split()
+    return all(word in normalized_title for word in query_words)
+
+
+async def smart_search_games(session, query: str, limit: int = 10) -> list[Game]:
+    """Search games with word-based matching.
+
+    1. Try ILIKE substring first (fast).
+    2. If not enough results, fetch broader candidates and filter with word matching.
+    """
+    # Step 1: direct ILIKE
+    result = await session.execute(
+        select(Game).where(Game.title.ilike(f"%{query}%")).limit(limit)
+    )
+    games = list(result.scalars().all())
+
+    if len(games) >= limit:
+        return games
+
+    # Step 2: word-based fallback
+    query_words = _normalize_title(query).split()
+    if not query_words:
+        return games
+
+    found_ids = {g.id for g in games}
+    search_word = max(query_words, key=len)  # longest word = most selective
+
+    result = await session.execute(
+        select(Game).where(Game.title.ilike(f"%{search_word}%")).limit(100)
+    )
+    candidates = result.scalars().all()
+
+    for game in candidates:
+        if game.id not in found_ids and _words_match(query, game.title):
+            games.append(game)
+            found_ids.add(game.id)
+            if len(games) >= limit:
+                break
+
+    return games[:limit]
+
+
+# --- Dual-Currency (ILS) ---
+
+async def format_price_ils(price: float, currency: str) -> str:
+    """Return ILS equivalent suffix for non-ILS currencies.
+
+    Returns "" for ILS, " (~185₪)" for other currencies.
+    """
+    if currency == "ILS":
+        return ""
+    ils = await ExchangeRateService.convert_to_ils(price, currency)
+    return f" (~{ils:.0f}₪)"

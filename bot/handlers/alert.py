@@ -4,7 +4,7 @@ from sqlalchemy import select, delete
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user, get_user_regions, _escape_md
+from bot.helpers import get_or_create_user, get_user_regions, _escape_md, smart_search_games
 from config import config
 from database.engine import get_session
 from database.models import Game, PriceAlert
@@ -69,11 +69,8 @@ async def _alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     async with get_session() as session:
-        # Search for the game
-        result = await session.execute(
-            select(Game).where(Game.title.ilike(f"%{game_query}%")).limit(1)
-        )
-        game = result.scalar_one_or_none()
+        games = await smart_search_games(session, game_query, limit=1)
+        game = games[0] if games else None
 
         if not game:
             await update.message.reply_text(

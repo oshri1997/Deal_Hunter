@@ -1,11 +1,12 @@
 import logging
 
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user, _escape_md
+from urllib.parse import quote
+
+from bot.helpers import get_or_create_user, _escape_md, smart_search_games, format_price_ils
 from config import config
 from database.engine import get_session
 from database.models import ActiveDeal, Game
@@ -28,13 +29,7 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_query = " ".join(context.args).strip()
 
     async with get_session() as session:
-        # Search for games by title
-        games_result = await session.execute(
-            select(Game)
-            .where(Game.title.ilike(f"%{game_query}%"))
-            .limit(10)
-        )
-        games = games_result.scalars().all()
+        games = await smart_search_games(session, game_query, limit=10)
         
         if not games:
             await update.message.reply_text(
@@ -42,13 +37,6 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Try a different search term."
             )
             return
-        
-        # Currency conversion rates to ILS
-        conversion_to_ils = {
-            "ILS": 1.0,
-            "USD": 3.7,
-            "INR": 0.0341,
-        }
         
         # Process each game separately
         all_lines = []
@@ -70,11 +58,10 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not deals:
                 continue
             
-            # Convert prices to ILS and sort
+            from services.exchange_rates import ExchangeRateService
             deals_with_ils = []
             for deal in deals:
-                rate = conversion_to_ils.get(deal.currency, 1.0)
-                price_in_ils = float(deal.price) * rate
+                price_in_ils = await ExchangeRateService.convert_to_ils(float(deal.price), deal.currency)
                 deals_with_ils.append((deal, price_in_ils))
             
             deals_with_ils.sort(key=lambda x: x[1])
@@ -92,10 +79,10 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name = region_info.get("name", deal.region_code)
                 currency = region_info.get("currency", "USD")
                 
+                ils_suffix = f" (~{price_ils:.0f}₪)" if currency != "ILS" else ""
                 marker = " 👍 <b>CHEAPEST</b>" if deal == cheapest else ""
                 game_lines.append(
-                    f"{flag} <b>{name}:</b> {deal.price} {currency} "
-                    f"(~{price_ils:.0f} ₪) "
+                    f"{flag} <b>{name}:</b> {deal.price} {currency}{ils_suffix} "
                     f"(-{deal.discount_percent}%){marker}"
                 )
             
@@ -113,8 +100,6 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{config.REGIONS.get(cheapest.region_code, {}).get('name', '')}"
             )
             
-            # Add PS Store link
-            from urllib.parse import quote
             best_store_url = config.REGIONS.get(cheapest.region_code, {}).get('store_url', '')
             if best_store_url:
                 store_link = f"{best_store_url}/search/{quote(game.title)}"
