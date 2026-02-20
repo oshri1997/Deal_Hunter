@@ -121,6 +121,9 @@ class PSPricesScraper:
                 None, self._fetch_and_parse, url, region_code, page
             )
 
+            if page_deals is None:  # fetch error — skip without counting as empty
+                continue
+
             if not page_deals:
                 consecutive_empty += 1
                 if consecutive_empty >= 2:
@@ -183,7 +186,7 @@ class PSPricesScraper:
             logger.error(f"[PSPrices] Failed to get total pages: {e}")
         return 999
 
-    def _fetch_and_parse(self, url: str, region_code: str, page: int) -> list[ScrapedDeal]:
+    def _fetch_and_parse(self, url: str, region_code: str, page: int) -> list[ScrapedDeal] | None:
         """Synchronous fetch + parse (runs in executor).
 
         Uses a persistent session so cookies carry over between pages.
@@ -221,7 +224,7 @@ class PSPricesScraper:
                     continue
 
                 logger.error(f"[PSPrices] HTTP {resp.status_code} for {url}")
-                break
+                return None
 
             except Exception as e:
                 logger.error(
@@ -230,7 +233,7 @@ class PSPricesScraper:
                 if attempt < max_retries - 1:
                     time.sleep(random.uniform(3, 6))
 
-        return []
+        return None
 
     # ------------------------------------------------------------------
     # Parsing

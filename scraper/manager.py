@@ -33,16 +33,9 @@ class ScraperManager:
         async def _scrape_region(region_code: str):
             async with semaphore:
                 try:
-                    # Only scrape IL, IN, and US
-                    if region_code in ["IL", "IN", "US"]:
-                        max_pages = 50 if full_scrape else 2
-                    else:
-                        max_pages = 0  # Skip other regions
-                    
-                    if max_pages == 0:
+                    if region_code not in ["IL", "IN", "US"]:
                         return
-                    
-                    deals = await self.scraper.scrape_region(region_code, max_pages=max_pages)
+                    deals = await self.scraper.scrape_region(region_code, full_scrape=full_scrape)
                     if deals:
                         new_deals = await self._persist_deals(region_code, deals)
                         if new_deals:
@@ -165,7 +158,31 @@ class ScraperManager:
                 
                 if is_new:
                     new_deals.append(deal)
-            
+
+            # Remove stale deals: if we scraped pages 1-5, any deal in the DB
+            # that claims to be on pages 1-5 but wasn't found in this scrape
+            # is no longer on the website and should be removed.
+            scraped_pages = {d.page_number for d in deals}
+            scraped_game_ids = set(game_ids)
+            if scraped_pages:
+                stale_result = await session.execute(
+                    select(ActiveDeal).where(
+                        ActiveDeal.region_code == region_code,
+                        ActiveDeal.page_number.in_(scraped_pages),
+                        ActiveDeal.game_id.notin_(scraped_game_ids)
+                    )
+                )
+                stale_deals = stale_result.scalars().all()
+                if stale_deals:
+                    stale_ids = [d.game_id for d in stale_deals]
+                    await session.execute(
+                        delete(ActiveDeal).where(
+                            ActiveDeal.region_code == region_code,
+                            ActiveDeal.game_id.in_(stale_ids)
+                        )
+                    )
+                    logger.info(f"Removed {len(stale_deals)} stale deals for {region_code} (no longer on scraped pages {sorted(scraped_pages)})")
+
             # Commit all at once
             await session.commit()
         
