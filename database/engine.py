@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from config import config
@@ -40,6 +41,10 @@ async def init_db():
     """Create all tables if they don't exist."""
     async with _get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add is_following column to existing databases that predate it
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_following BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
     logger.info("Database tables created successfully")
 
 

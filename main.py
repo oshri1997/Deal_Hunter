@@ -21,6 +21,7 @@ from bot.handlers import (
     scrape_now_handler,
     scrape_full_handler,
     scrape_psp_handler,
+    giftcard_handler,
     check_amazon_handler,
     next_scrape_handler,
     clear_db_handler,
@@ -30,6 +31,7 @@ from bot.handlers import (
     alert_handler,
     alerts_handler,
     delalert_handler,
+    follow_handler,
 )
 
 # Configure logging
@@ -93,6 +95,7 @@ def main():
     application.add_handler(scrape_now_handler)
     application.add_handler(scrape_full_handler)
     application.add_handler(scrape_psp_handler)
+    application.add_handler(giftcard_handler)
     application.add_handler(check_amazon_handler)
     application.add_handler(next_scrape_handler)
     application.add_handler(clear_db_handler)
@@ -102,6 +105,7 @@ def main():
     application.add_handler(alert_handler)
     application.add_handler(alerts_handler)
     application.add_handler(delalert_handler)
+    application.add_handler(follow_handler)
 
     logger.info("🚀 PS5 Deal Hunter Bot starting...")
     logger.info(f"Daily scrape scheduled at 02:00")

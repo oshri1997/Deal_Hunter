@@ -8,29 +8,33 @@ from bot.helpers import get_or_create_user
 logger = logging.getLogger(__name__)
 
 WELCOME_MSG = (
-    "🎮 *Welcome to PS5 Deal Hunter\\!*\n\n"
-    "I track PlayStation Store deals across multiple regions "
-    "and send you instant notifications when games go on sale\\.\n\n"
-    "*Getting started:*\n"
-    "1\\. Use /regions to choose your PSN store regions\n"
-    "2\\. Use /deals to see current top deals\n"
-    "3\\. Use /watch to track specific games\n\n"
-    "*Commands:*\n"
-    "/regions \\- Select your regions\n"
-    "/deals \\- View current deals\n"
-    "/watch \\<game\\> \\- Add game to wishlist\n"
-    "/unwatch \\<game\\|number\\> \\- Remove from wishlist\n"
-    "/watchlist \\- View your tracked games\n"
-    "/compare \\<game\\> \\- Compare prices across regions\n"
-    "/alert \\<game\\> \\<price\\|discount%\\> \\- Set price alert\n"
-    "/alerts \\- View your active alerts\n"
-    "/search \\<game\\> \\- Search for a game\n"
-    "/check\\_amazon \\- Check PS gift card availability\n"
-    "/settings \\- Your preferences\n"
-    "/donate \\- Support the bot\n"
-    "/help \\- Show this message\n\n"
-    "🎉 *All features are free during beta\\!*\n"
-    "Enjoy unlimited regions, real\\-time alerts, and price comparison\\."
+    "🎮 <b>ברוכים הבאים ל-PS Deal Hunter!</b>\n\n"
+    "הבוט עוקב אחרי מבצעים ב-PlayStation Store ממדינות שונות "
+    "ושולח לך התראות בזמן אמת כשמשחקים יורדים במחיר.\n\n"
+    "<b>🚀 איך מתחילים:</b>\n"
+    "1. בחר את אזורי ה-PSN שלך עם /regions\n"
+    "2. צפה במבצעים הנוכחיים עם /deals\n"
+    "3. עקוב אחרי משחקים ספציפיים עם /watch\n\n"
+    "<b>📋 פקודות:</b>\n"
+    "/regions – בחר אזורי PSN\n"
+    "/deals – מבצעים נוכחיים\n"
+    "/watch &lt;משחק&gt; – הוסף לרשימת המשאלות\n"
+    "/unwatch &lt;שם|מספר&gt; – הסר מהרשימה\n"
+    "/watchlist – הרשימה שלך\n"
+    "/compare &lt;משחק&gt; – השוואת מחירים בין אזורים\n"
+    "/alert &lt;משחק&gt; &lt;מחיר|%&gt; – התראת מחיר\n"
+    "/alerts – ההתראות הפעילות שלך\n"
+    "/search &lt;משחק&gt; – חפש משחק\n"
+    "/giftcard – בדוק זמינות גיפט קארד של Amazon\n"
+    "/follow – קבל עדכון כשהגיפט קארד זמין\n"
+    "/settings – הגדרות אישיות\n"
+    "/donate – תמוך בפיתוח\n"
+    "/help – הצג הודעה זו\n\n"
+    "💝 <b>תמיכה בפיתוח:</b>\n"
+    "הבוט חינמי לחלוטין לכולם! אם הוא עזר לך לחסוך כסף, "
+    "שקול לתמוך בפיתוח ולשמור על הבוט פעיל:\n"
+    "☕ <a href=\"https://buymeacoffee.com/oshri1997\">buymeacoffee.com/oshri1997</a>\n\n"
+    "🎉 <b>כל הפיצ'רים חינמיים בבטא!</b>"
 )
 
 
@@ -39,12 +43,12 @@ async def _start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await get_or_create_user(user)
     logger.info(f"User {user.id} ({user.username}) started the bot")
-    await update.message.reply_text(WELCOME_MSG, parse_mode="MarkdownV2")
+    await update.message.reply_text(WELCOME_MSG, parse_mode="HTML")
 
 
 async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /help command."""
-    await update.message.reply_text(WELCOME_MSG, parse_mode="MarkdownV2")
+    await update.message.reply_text(WELCOME_MSG, parse_mode="HTML")
 
 
 start_handler = CommandHandler("start", _start)

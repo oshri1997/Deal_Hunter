@@ -5,10 +5,11 @@ from bot.handlers.wishlist import watch_handler, unwatch_handler, watchlist_hand
 from bot.handlers.compare import compare_handler
 from bot.handlers.settings import settings_handler
 from bot.handlers.premium import premium_handler
-from bot.handlers.admin import get_id_handler, scrape_now_handler, scrape_full_handler, scrape_psp_handler, check_amazon_handler, next_scrape_handler, clear_db_handler
+from bot.handlers.admin import get_id_handler, scrape_now_handler, scrape_full_handler, scrape_psp_handler, check_amazon_handler, giftcard_handler, next_scrape_handler, clear_db_handler
 from bot.handlers.search import search_handler
 from bot.handlers.donate import donate_handler, support_handler
 from bot.handlers.alert import alert_handler, alerts_handler, delalert_handler
+from bot.handlers.follow import follow_handler
 
 __all__ = [
     "start_handler",
@@ -27,6 +28,7 @@ __all__ = [
     "scrape_now_handler",
     "scrape_full_handler",
     "scrape_psp_handler",
+    "giftcard_handler",
     "check_amazon_handler",
     "next_scrape_handler",
     "clear_db_handler",
@@ -36,4 +38,5 @@ __all__ = [
     "alert_handler",
     "alerts_handler",
     "delalert_handler",
+    "follow_handler",
 ]
