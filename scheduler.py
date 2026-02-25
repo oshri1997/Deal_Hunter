@@ -49,7 +49,7 @@ class DealScheduler:
         # Check Amazon gift card every 3 hours
         self.scheduler.add_job(
             self._check_amazon,
-            trigger=IntervalTrigger(hours=3),
+            trigger=IntervalTrigger(hours=0.5),
             id="amazon_check",
             name="Check Amazon gift card",
             replace_existing=True
