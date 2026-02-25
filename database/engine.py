@@ -16,7 +16,13 @@ def _get_engine():
     global _engine
     if _engine is None:
         _engine = create_async_engine(
-            config.DATABASE_URL, echo=False, pool_size=10, max_overflow=20
+            config.DATABASE_URL,
+            echo=False,
+            pool_size=10,
+            max_overflow=20,
+            connect_args={
+                "prepared_statement_cache_size": 0,
+            },
         )
     return _engine
 
