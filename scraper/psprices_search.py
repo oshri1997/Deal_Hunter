@@ -1,16 +1,17 @@
 """
 Online search fallback for PSPrices.
 
-When a game is not found in the local DB, this module scrapes
-the PSPrices "all-discounts" collection page and tries to match
-the user's query against game titles on the page.  If needed it
-also hits the PlayStation Store concept search URL which returns
-JSON and is much faster / more reliable than HTML scraping.
+When a game is not found in the local DB, this module scrapes the PSPrices
+games search page (/region-XX/games/?q=...) using the same robust fetch
+strategy as PSPricesScraper: browser-profile rotation, Cloudflare warm-up,
+and retries with exponential back-off.
 """
 
 import asyncio
 import logging
+import random
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -38,8 +39,13 @@ class SearchResult:
     psprices_url: str | None      # Direct link to the PSPrices game page
 
 
-# Browser config for cloudscraper (reuse from main scraper)
-_BROWSER_CFG = {"browser": "chrome", "platform": "windows", "mobile": False}
+# Same browser profiles as PSPricesScraper — rotate on Cloudflare blocks
+_BROWSER_CONFIGS = [
+    {"browser": "chrome",  "platform": "windows", "mobile": False},
+    {"browser": "firefox", "platform": "windows", "mobile": False},
+    {"browser": "chrome",  "platform": "linux",   "mobile": False},
+    {"browser": "chrome",  "platform": "darwin",  "mobile": False},
+]
 
 
 def _normalize(text: str) -> str:
@@ -65,10 +71,15 @@ class PSPricesOnlineSearch:
 
     def __init__(self):
         self._scraper: cloudscraper.CloudScraper | None = None
+        self._cfg_index = 0
 
-    def _get_scraper(self) -> cloudscraper.CloudScraper:
-        if self._scraper is None:
-            self._scraper = cloudscraper.create_scraper(browser=_BROWSER_CFG)
+    def _get_scraper(self, force_new: bool = False) -> cloudscraper.CloudScraper:
+        """Return (or create) a cloudscraper session, rotating profile on force_new."""
+        if self._scraper is None or force_new:
+            cfg = _BROWSER_CONFIGS[self._cfg_index % len(_BROWSER_CONFIGS)]
+            self._cfg_index += 1
+            self._scraper = cloudscraper.create_scraper(browser=cfg)
+            logger.debug(f"[OnlineSearch] New session: {cfg['browser']}/{cfg['platform']}")
         return self._scraper
 
     # ------------------------------------------------------------------
@@ -81,18 +92,7 @@ class PSPricesOnlineSearch:
         region_codes: list[str] | None = None,
         max_results: int = 10,
     ) -> list[SearchResult]:
-        """Search PSPrices for games matching *query*.
-
-        Searches across the given regions (defaults to all supported).
-        De-duplicates by title so the user doesn't see the same game
-        listed once per region.
-
-        Strategy:
-        1. Scrape page 1 of the "all-discounts" collection for each region.
-        2. Filter cards whose title matches the query words.
-        3. If not enough results, also try a broader approach by scraping
-           the main index page (which includes non-discounted games).
-        """
+        """Search PSPrices for games matching *query* across the given regions."""
         if region_codes is None:
             region_codes = list(config.REGIONS.keys())
 
@@ -105,7 +105,6 @@ class PSPricesOnlineSearch:
             if not psp_region:
                 continue
 
-            # Search discounts page
             results = await loop.run_in_executor(
                 None, self._scrape_and_filter, psp_region, rc, query
             )
@@ -123,29 +122,80 @@ class PSPricesOnlineSearch:
     # Internals
     # ------------------------------------------------------------------
 
-    def _scrape_and_filter(
-        self, psp_region: str, region_code: str, query: str
-    ) -> list[SearchResult]:
-        """Fetch PSPrices search results for the query."""
-        url = (
-            f"{self.BASE}/region-{psp_region}/games/"
-            f"?q={quote(query)}&platform=PS5%2CPS4"
+    def _warm_up(self, psp_region: str) -> None:
+        """Hit the all-discounts page first so Cloudflare sets its cookies.
+
+        The search endpoint is more aggressively protected; a prior request
+        on the same session to a lighter page grants the CF clearance cookie
+        that makes the search request succeed.
+        """
+        warm_url = (
+            f"{self.BASE}/region-{psp_region}/collection/all-discounts"
+            f"?page=1&platform=PS5%2CPS4"
         )
         try:
             scraper = self._get_scraper()
-            resp = scraper.get(url, timeout=30)
-            if resp.status_code != 200:
-                logger.warning(f"[OnlineSearch] HTTP {resp.status_code} for {url}")
-                return []
-            return self._parse_and_filter(resp.text, region_code, query)
+            time.sleep(random.uniform(0.5, 1.5))
+            resp = scraper.get(warm_url, timeout=30)
+            logger.debug(f"[OnlineSearch] Warm-up {psp_region}: HTTP {resp.status_code}")
         except Exception as e:
-            logger.error(f"[OnlineSearch] Error fetching {url}: {e}")
-            return []
+            logger.debug(f"[OnlineSearch] Warm-up error: {e}")
+
+    def _scrape_and_filter(
+        self, psp_region: str, region_code: str, query: str
+    ) -> list[SearchResult]:
+        """Fetch PSPrices search results with warm-up + retry logic."""
+        search_url = (
+            f"{self.BASE}/region-{psp_region}/games/"
+            f"?q={quote(query)}&platform=PS5%2CPS4"
+        )
+
+        # Warm up the session with a lighter page first
+        self._warm_up(psp_region)
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                scraper = self._get_scraper(force_new=(attempt > 0))
+                time.sleep(random.uniform(0.5, 2.0))   # jitter
+
+                resp = scraper.get(search_url, timeout=30)
+
+                if resp.status_code == 200:
+                    results = self._parse_and_filter(resp.text, region_code, query)
+                    logger.info(
+                        f"[OnlineSearch] {region_code} '{query}': "
+                        f"{len(results)} result(s)"
+                    )
+                    return results
+
+                if resp.status_code in (403, 429, 503):
+                    wait = random.uniform(5, 10) * (attempt + 1)
+                    logger.warning(
+                        f"[OnlineSearch] HTTP {resp.status_code} — "
+                        f"retry {attempt + 1}/{max_retries} in {wait:.0f}s"
+                    )
+                    time.sleep(wait)
+                    continue
+
+                logger.warning(
+                    f"[OnlineSearch] HTTP {resp.status_code} for {search_url}"
+                )
+                return []
+
+            except Exception as e:
+                logger.error(f"[OnlineSearch] Fetch error (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(random.uniform(3, 6))
+
+        logger.error(f"[OnlineSearch] All retries exhausted for {search_url}")
+        return []
 
     def _parse_and_filter(
         self, html: str, region_code: str, query: str
     ) -> list[SearchResult]:
-        """Parse .game-fragment cards and keep only those matching *query*."""
+        """Parse .game-fragment cards — server already filtered by query,
+        but we apply an extra word-match pass to drop false positives."""
         soup = BeautifulSoup(html, "html.parser")
         cards = soup.select(".game-fragment")
         region_info = config.REGIONS.get(region_code, {})
