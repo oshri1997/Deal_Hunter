@@ -67,14 +67,12 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             games = main_games
 
         if games:
-            message = await _format_db_results(session, games)
+            message, flat_games = await _format_db_results(session, games)
             message += (
                 "\n\n📝 Reply with a <b>number</b> to see details.\n"
                 "🌐 Didn't find your game? Send <b>0</b> to search online."
             )
-            context.user_data["search_db_games"] = [
-                {"id": g.id, "title": g.title} for g in games
-            ]
+            context.user_data["search_db_games"] = flat_games
             await update.message.reply_text(message, parse_mode="HTML")
             return WAITING_FOR_PICK
 
@@ -256,38 +254,96 @@ def _cleanup_context(context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop(key, None)
 
 
-async def _format_db_results(session, games: list[Game]) -> str:
-    """Format games found in the local DB with deal info."""
-    lines = [f"🎮 Found {len(games)} game(s):\n"]
+async def _format_db_results(
+    session, games: list[Game]
+) -> tuple[str, list[dict]]:
+    """Format games grouped by region with prices.
 
-    for i, game in enumerate(games, 1):
-        deal_stmt = select(ActiveDeal).where(ActiveDeal.game_id == game.id)
-        deal_result = await session.execute(deal_stmt)
+    Returns (formatted_message, flat_games_in_display_order) so the caller
+    can store the ordered list for pick-by-number.
+    """
+    # ── collect (game, deal) pairs per region ──────────────────────────
+    regions: dict[str, list[tuple]] = {}   # region_code → [(game, deal)]
+    no_price_games: list[Game] = []
+    seen_no_price: set[str] = set()        # avoid duplicate "no price" titles
+
+    for game in games:
+        deal_result = await session.execute(
+            select(ActiveDeal).where(ActiveDeal.game_id == game.id)
+        )
         deals = deal_result.scalars().all()
 
         if deals:
             for deal in deals:
-                region_info = config.REGIONS.get(deal.region_code, {})
-                flag = region_info.get("flag", "")
-                currency = region_info.get("currency", "USD")
-                store_url = region_info.get("store_url", "")
-                search_query = quote(game.title)
-                psn_link = f"{store_url}/search/{search_query}" if store_url else ""
-
-                ils_suffix = await format_price_ils(float(deal.price), currency)
-                lines.append(
-                    f"<b>{i}.</b> 🔥 {flag} {game.title}\n"
-                    f"    💰 {deal.price} {currency}{ils_suffix} "
-                    f"(was {deal.original_price}) -{deal.discount_percent}%\n"
-                    f"    🛒 <a href='{psn_link}'>PS Store</a>\n"
-                )
+                rc = deal.region_code
+                if rc not in regions:
+                    regions[rc] = []
+                regions[rc].append((game, deal))
         else:
-            lines.append(f"<b>{i}.</b> ⚪ {game.title} — No active deals\n")
+            if game.title not in seen_no_price:
+                no_price_games.append(game)
+                seen_no_price.add(game.title)
 
-    message = "\n".join(lines)
+    # ── build message ──────────────────────────────────────────────────
+    flat_games: list[dict] = []
+    lines: list[str] = []
+    counter = 1
+
+    for region_code, game_deals in regions.items():
+        region_info = config.REGIONS.get(region_code, {})
+        flag       = region_info.get("flag", "")
+        region_name = region_info.get("name", region_code)
+        store_url  = region_info.get("store_url", "")
+
+        # Deals first, then non-deals; alphabetical within each group
+        game_deals.sort(
+            key=lambda x: (0 if (x[1].discount_percent or 0) > 0 else 1,
+                           x[0].title.lower())
+        )
+
+        lines.append(f"\n{flag} <b>{region_name}</b>")
+
+        for game, deal in game_deals:
+            psn_link   = f"{store_url}/search/{quote(game.title)}" if store_url else ""
+            price      = float(deal.price)
+            currency   = deal.currency or "USD"
+            ils_suffix = await format_price_ils(price, currency)
+            disc       = deal.discount_percent or 0
+
+            if disc > 0:
+                price_line = (
+                    f"💰 {deal.price} {currency}{ils_suffix} "
+                    f"(was {deal.original_price}) -<b>{disc}%</b>"
+                )
+                label = f"<b>{counter}.</b> 🔥 {game.title}"
+            elif price > 0:
+                price_line = f"💰 {deal.price} {currency}{ils_suffix}"
+                label = f"<b>{counter}.</b> {game.title}"
+            else:
+                price_line = "💰 No price data"
+                label = f"<b>{counter}.</b> {game.title}"
+
+            entry = f"{label}\n    {price_line}"
+            if psn_link:
+                entry += f"\n    🛒 <a href='{psn_link}'>PS Store</a>"
+            lines.append(entry)
+
+            flat_games.append({"id": game.id, "title": game.title})
+            counter += 1
+
+    # Games with absolutely no price data
+    for game in no_price_games:
+        lines.append(f"\n<b>{counter}.</b> ⚪ {game.title} — No price data")
+        flat_games.append({"id": game.id, "title": game.title})
+        counter += 1
+
+    header = f"🎮 Found {counter - 1} result(s):"
+    message = header + "\n".join(lines)
+
     if len(message) > 3800:
         message = message[:3790] + "\n..."
-    return message
+
+    return message, flat_games
 
 
 async def _show_game_details(update: Update, game_id: str, title: str):
@@ -303,22 +359,30 @@ async def _show_game_details(update: Update, game_id: str, title: str):
         if deals:
             for deal in deals:
                 region_info = config.REGIONS.get(deal.region_code, {})
-                flag = region_info.get("flag", "")
+                flag        = region_info.get("flag", "")
                 region_name = region_info.get("name", deal.region_code)
-                currency = region_info.get("currency", "USD")
-                store_url = region_info.get("store_url", "")
+                currency    = deal.currency or region_info.get("currency", "USD")
+                store_url   = region_info.get("store_url", "")
 
                 ils_suffix = await format_price_ils(float(deal.price), currency)
-                psn_link = f"{store_url}/search/{quote(title)}" if store_url else ""
+                psn_link   = f"{store_url}/search/{quote(title)}" if store_url else ""
+                disc       = deal.discount_percent or 0
+
+                if disc > 0:
+                    price_line = (
+                        f"💰 {deal.price} {currency}{ils_suffix} "
+                        f"(was {deal.original_price}) — <b>{disc}% OFF</b>"
+                    )
+                else:
+                    price_line = f"💰 {deal.price} {currency}{ils_suffix}"
 
                 lines.append(
                     f"{flag} <b>{region_name}:</b>\n"
-                    f"💰 {deal.price} {currency}{ils_suffix} "
-                    f"(was {deal.original_price}) — <b>{deal.discount_percent}% OFF</b>\n"
+                    f"{price_line}\n"
                     f"🛒 <a href='{psn_link}'>PS Store</a>\n"
                 )
         else:
-            lines.append("💰 No active deals at the moment.\n")
+            lines.append("💰 No price data available.\n")
 
         lines.append(f"💡 Use <code>/watch {title}</code> to track this game!")
 
@@ -380,8 +444,9 @@ async def _save_results_to_db(results) -> int:
             elif r.cover_url and not existing.cover_url:
                 existing.cover_url = r.cover_url
 
-            # Save deal if exists (no duplicates)
-            if r.price is not None and r.discount_percent and r.discount_percent > 0:
+            # Save price for every game that has one — even if no discount.
+            # This lets the DB search show full prices, not just "No active deals".
+            if r.price is not None:
                 existing_deal_result = await session.execute(
                     select(ActiveDeal).where(
                         ActiveDeal.game_id == r.game_id,
@@ -402,6 +467,12 @@ async def _save_results_to_db(results) -> int:
                         position_on_page=0,
                     )
                     session.add(deal)
+                else:
+                    # Update price / discount if data changed
+                    existing_deal.price = r.price
+                    existing_deal.original_price = r.original_price or r.price
+                    existing_deal.discount_percent = r.discount_percent or 0
+                    existing_deal.currency = r.currency
 
         await session.commit()
     return saved
