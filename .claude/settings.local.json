@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(wc:*)",
-      "Bash(git check-ignore -v .pytest_cache/)"
+      "Bash(git check-ignore -v .pytest_cache/)",
+      "Bash(python -c \":*)"
     ]
   }
 }

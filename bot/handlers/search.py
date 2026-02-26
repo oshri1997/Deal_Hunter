@@ -52,8 +52,14 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🔍 Searching for '{query}'...")
 
     # --- DB search ---
+    _DLC_KEYWORDS = ("points", "dlc", "pack", "bundle", "currency", "coins")
+
+    def _dlc_sort_key(g) -> int:
+        return 1 if any(kw in g.title.lower() for kw in _DLC_KEYWORDS) else 0
+
     async with get_session() as session:
         games = await smart_search_games(session, query)
+        games = sorted(games, key=_dlc_sort_key)  # main games first
 
         if games:
             message = await _format_db_results(session, games)
@@ -152,7 +158,7 @@ async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     """Scrape PSPrices, save to DB, show results grouped by title."""
-    await update.message.reply_text("🌐 Searching PSPrices online...")
+    await update.message.reply_text("🌐 Searching online...")
 
     try:
         from scraper.psprices_search import PSPricesOnlineSearch
