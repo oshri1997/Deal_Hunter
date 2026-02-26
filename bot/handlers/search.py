@@ -117,9 +117,9 @@ async def _handle_db_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user reply after online results are shown."""
-    results = context.user_data.get("search_online_results")
+    title_list = context.user_data.get("search_online_results")
 
-    if not results:
+    if not title_list:
         await update.message.reply_text("⚠️ Session expired. Use /search again.")
         return ConversationHandler.END
 
@@ -133,14 +133,14 @@ async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return WAITING_FOR_ONLINE_PICK
 
-    if pick < 1 or pick > len(results):
+    if pick < 1 or pick > len(title_list):
         await update.message.reply_text(
-            f"⚠️ Pick a number between 1 and {len(results)}."
+            f"⚠️ Pick a number between 1 and {len(title_list)}."
         )
         return WAITING_FOR_ONLINE_PICK
 
-    r = results[pick - 1]
-    message = _format_single_online_result(r)
+    title, platform, region_results = title_list[pick - 1]
+    message = await _format_multi_region_result(title, platform, region_results)
     await update.message.reply_text(message, parse_mode="HTML")
     _cleanup_context(context)
     return ConversationHandler.END
@@ -151,7 +151,7 @@ async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ------------------------------------------------------------------
 
 async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
-    """Scrape PSPrices, save to DB, show results."""
+    """Scrape PSPrices, save to DB, show results grouped by title."""
     await update.message.reply_text("🌐 Searching PSPrices online...")
 
     try:
@@ -163,7 +163,8 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             user_regions = list(config.REGIONS.keys())
 
         searcher = PSPricesOnlineSearch()
-        results = await searcher.search(query, region_codes=user_regions, max_results=10)
+        # Get all results across all user regions (no dedup)
+        results = await searcher.search(query, region_codes=user_regions)
     except Exception as e:
         logger.error(f"Online search failed: {e}", exc_info=True)
         await update.message.reply_text("❌ Online search failed. Try again later.")
@@ -181,26 +182,44 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     saved_count = await _save_results_to_db(results)
     logger.info(f"Saved {saved_count} new games to DB from online search")
 
-    # Single result → show directly
-    if len(results) == 1:
-        message = _format_single_online_result(results[0])
+    # Group by normalized title: {norm_title: [SearchResult, ...]}
+    grouped: dict[str, list] = {}
+    order: list[str] = []
+    for r in results:
+        norm = r.title.lower().strip()
+        if norm not in grouped:
+            grouped[norm] = []
+            order.append(norm)
+        grouped[norm].append(r)
+
+    # Build indexed list: [(display_title, platform, [SearchResult, ...])]
+    title_list = [
+        (grouped[n][0].title, grouped[n][0].platform or "", grouped[n])
+        for n in order
+    ]
+
+    # Single unique title → show directly
+    if len(title_list) == 1:
+        title, platform, region_results = title_list[0]
+        message = await _format_multi_region_result(title, platform, region_results)
         await update.message.reply_text(message, parse_mode="HTML")
         _cleanup_context(context)
         return ConversationHandler.END
 
-    # Multiple results → ask user to pick
-    lines = [f"🌐 Found {len(results)} games on PSPrices:\n"]
-    for i, r in enumerate(results, 1):
-        deal_info = ""
-        if r.price is not None and r.discount_percent:
-            deal_info = f" — 💰 {r.price} {r.currency} (-{r.discount_percent}%)"
-
-        platform = f" [{r.platform}]" if r.platform else ""
-        lines.append(f"<b>{i}.</b> {r.title}{platform}{deal_info}")
+    # Multiple titles → show numbered list with best deal indicator
+    lines = [f"🌐 Found {len(title_list)} games on PSPrices:\n"]
+    for i, (title, platform, region_results) in enumerate(title_list, 1):
+        plat = f" [{platform}]" if platform else ""
+        best_discount = max(
+            (r.discount_percent for r in region_results if r.discount_percent),
+            default=None,
+        )
+        deal_info = f" — 🔥 -{best_discount}%" if best_discount else ""
+        lines.append(f"<b>{i}.</b> {title}{plat}{deal_info}")
 
     lines.append("\n📝 Reply with a <b>number</b> to see details, or /cancel to stop.")
 
-    context.user_data["search_online_results"] = results
+    context.user_data["search_online_results"] = title_list
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
     return WAITING_FOR_ONLINE_PICK
 
@@ -295,38 +314,39 @@ async def _show_game_details(update: Update, game_id: str, title: str):
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
-def _format_single_online_result(r) -> str:
-    """Format a single online SearchResult."""
-    lines = [f"🎮 <b>{r.title}</b>"]
+async def _format_multi_region_result(title: str, platform: str, region_results: list) -> str:
+    """Format a game with prices for every region the user follows."""
+    lines = [f"🎮 <b>{title}</b>"]
+    if platform:
+        lines.append(f"🕹 {platform}")
+    lines.append("")
 
-    if r.platform:
-        lines.append(f"🕹 Platform: {r.platform}")
+    for r in region_results:
+        region_info = config.REGIONS.get(r.region_code, {})
+        flag = region_info.get("flag", "")
+        region_name = region_info.get("name", r.region_code)
+        store_url = region_info.get("store_url", "")
+        psn_link = f"{store_url}/search/{quote(title)}" if store_url else ""
 
-    region_info = config.REGIONS.get(r.region_code, {})
-    flag = region_info.get("flag", "")
-    region_name = region_info.get("name", r.region_code)
-    lines.append(f"📍 Region: {flag} {region_name}")
+        lines.append(f"{flag} <b>{region_name}</b>")
 
-    if r.price is not None:
-        price_line = f"💰 {r.price} {r.currency}"
-        if r.original_price:
-            price_line += f" (was {r.original_price})"
-        if r.discount_percent:
-            price_line += f" — <b>{r.discount_percent}% OFF</b>"
-        lines.append(price_line)
-    else:
-        lines.append("💰 No current deal")
+        if r.price is not None:
+            if r.price == 0.0:
+                lines.append("💰 Free")
+            else:
+                ils_suffix = await format_price_ils(float(r.price), r.currency)
+                price_line = f"💰 {r.price} {r.currency}{ils_suffix}"
+                if r.original_price and r.discount_percent:
+                    price_line += f" (was {r.original_price}) — <b>-{r.discount_percent}%</b>"
+                lines.append(price_line)
+        else:
+            lines.append("💰 No active deal")
 
-    if r.psprices_url:
-        lines.append(f"📊 <a href='{r.psprices_url}'>View on PSPrices</a>")
+        if psn_link:
+            lines.append(f"🛒 <a href='{psn_link}'>PS Store</a>")
+        lines.append("")
 
-    store_url = region_info.get("store_url", "")
-    if store_url:
-        psn_link = f"{store_url}/search/{quote(r.title)}"
-        lines.append(f"🛒 <a href='{psn_link}'>PS Store</a>")
-
-    lines.append(f"\n💡 Use <code>/watch {r.title}</code> to track this game!")
-
+    lines.append(f"💡 Use <code>/watch {title}</code> to track this game!")
     return "\n".join(lines)
 
 

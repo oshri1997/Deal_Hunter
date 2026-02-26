@@ -90,14 +90,17 @@ class PSPricesOnlineSearch:
         self,
         query: str,
         region_codes: list[str] | None = None,
-        max_results: int = 10,
+        max_results: int = 50,
     ) -> list[SearchResult]:
-        """Search PSPrices for games matching *query* across the given regions."""
+        """Search PSPrices for games matching *query* across the given regions.
+
+        Returns ALL results (one entry per region per title) — no deduplication.
+        The caller is responsible for grouping by title if needed.
+        """
         if region_codes is None:
             region_codes = list(config.REGIONS.keys())
 
         all_results: list[SearchResult] = []
-        seen_titles: set[str] = set()
         loop = asyncio.get_event_loop()
 
         for rc in region_codes:
@@ -108,15 +111,9 @@ class PSPricesOnlineSearch:
             results = await loop.run_in_executor(
                 None, self._scrape_and_filter, psp_region, rc, query
             )
-            for r in results:
-                norm = _normalize(r.title)
-                if norm not in seen_titles:
-                    seen_titles.add(norm)
-                    all_results.append(r)
-                    if len(all_results) >= max_results:
-                        return all_results
+            all_results.extend(results)
 
-        return all_results
+        return all_results[:max_results]
 
     # ------------------------------------------------------------------
     # Internals
@@ -251,6 +248,10 @@ class PSPricesOnlineSearch:
                     discount_percent = int(m.group(1))
 
             # Price
+            # Structure varies:
+            #   Discounted:     .text-xl.font-bold > span.font-bold
+            #   Non-discounted: .text-xl.font-bold > span.inline-flex > span.font-bold
+            #                   (or just raw text inside .text-xl.font-bold)
             price = None
             original_price = None
             price_container = card.select_one(".text-xl.font-bold")
@@ -260,9 +261,15 @@ class PSPricesOnlineSearch:
                     price = 0.0
                     discount_percent = 100
                 else:
+                    # Try inner span.font-bold (works for both discounted and
+                    # non-discounted because select_one is recursive)
                     span = price_container.select_one("span.font-bold")
                     if span:
                         price = self._parse_price(span.get_text(strip=True))
+                    # Fallback: parse the full text content of the container
+                    # (handles any wrapping structure, strips currency symbols)
+                    if price is None:
+                        price = self._parse_price(txt)
 
                 orig_el = card.select_one(".old-price-strike")
                 if orig_el:
