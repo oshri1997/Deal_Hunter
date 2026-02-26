@@ -58,7 +58,7 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return 1 if any(kw in g.title.lower() for kw in _DLC_KEYWORDS) else 0
 
     async with get_session() as session:
-        games = await smart_search_games(session, query)
+        games = await smart_search_games(session, query, limit=50)
         games = sorted(games, key=_dlc_sort_key)  # main games first
 
         if games:
