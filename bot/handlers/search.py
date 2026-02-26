@@ -276,7 +276,13 @@ async def _format_db_results(
 
     Returns (formatted_message, flat_games_in_display_order) so the caller
     can store the ordered list for pick-by-number.
+
+    Builds the message incrementally so we never truncate mid-HTML-tag
+    (which would cause Telegram BadRequest errors).
     """
+    # Telegram HTML limit is 4096 bytes; leave ~900 for the footer + safety.
+    MAX_LEN = 3100
+
     # ── collect (game, deal) pairs per region ──────────────────────────
     regions: dict[str, list[tuple]] = {}   # region_code → [(game, deal)]
     no_price_games: list[Game] = []
@@ -299,16 +305,23 @@ async def _format_db_results(
                 no_price_games.append(game)
                 seen_no_price.add(game.title)
 
-    # ── build message ──────────────────────────────────────────────────
+    # ── build message incrementally (never truncate mid-tag) ───────────
     flat_games: list[dict] = []
     lines: list[str] = []
     counter = 1
+    truncated = False
+
+    def _current_len() -> int:
+        return sum(len(l) + 1 for l in lines)  # +1 for each joining "\n"
 
     for region_code, game_deals in regions.items():
+        if truncated:
+            break
+
         region_info = config.REGIONS.get(region_code, {})
-        flag       = region_info.get("flag", "")
+        flag        = region_info.get("flag", "")
         region_name = region_info.get("name", region_code)
-        store_url  = region_info.get("store_url", "")
+        store_url   = region_info.get("store_url", "")
 
         # Deals first, then non-deals; alphabetical within each group
         game_deals.sort(
@@ -316,7 +329,9 @@ async def _format_db_results(
                            x[0].title.lower())
         )
 
-        lines.append(f"\n{flag} <b>{region_name}</b>")
+        region_header = f"\n{flag} <b>{region_name}</b>"
+        region_lines: list[str] = [region_header]
+        region_games: list[dict] = []
 
         for game, deal in game_deals:
             psn_link   = f"{store_url}/search/{quote(game.title)}" if store_url else ""
@@ -341,23 +356,42 @@ async def _format_db_results(
             entry = f"{label}\n    {price_line}"
             if psn_link:
                 entry += f"\n    🛒 <a href='{psn_link}'>PS Store</a>"
-            lines.append(entry)
 
-            flat_games.append({"id": game.id, "title": game.title})
+            # ── overflow guard: stop BEFORE adding a partial entry ──────
+            candidate_len = _current_len() + sum(len(l) + 1 for l in region_lines) + len(entry)
+            if candidate_len > MAX_LEN:
+                truncated = True
+                break
+
+            region_lines.append(entry)
+            region_games.append({"id": game.id, "title": game.title})
             counter += 1
 
-    # Games with absolutely no price data
+        # Commit this region only if at least one game was added
+        if region_games:
+            lines.extend(region_lines)
+            flat_games.extend(region_games)
+
+    # ── games with absolutely no price data ────────────────────────────
     for game in no_price_games:
-        lines.append(f"\n<b>{counter}.</b> ⚪ {game.title} — No price data")
+        if truncated:
+            break
+        entry = f"\n<b>{counter}.</b> ⚪ {game.title} — No price data"
+        if _current_len() + len(entry) > MAX_LEN:
+            truncated = True
+            break
+        lines.append(entry)
         flat_games.append({"id": game.id, "title": game.title})
         counter += 1
 
-    header = f"🎮 Found {counter - 1} result(s):"
+    if truncated:
+        lines.append(
+            "\n<i>...more results available. "
+            "Send <b>0</b> to search online for all results.</i>"
+        )
+
+    header = f"🎮 Found {len(flat_games)} result(s):"
     message = header + "\n".join(lines)
-
-    if len(message) > 3800:
-        message = message[:3790] + "\n..."
-
     return message, flat_games
 
 
