@@ -119,42 +119,81 @@ class PSPricesOnlineSearch:
     # Internals
     # ------------------------------------------------------------------
 
-    def _warm_up(self, psp_region: str) -> None:
-        """Hit the all-discounts page first so Cloudflare sets its cookies.
+    def _warm_up(self, psp_region: str) -> bool:
+        """Two-step warm-up on the CURRENT session so Cloudflare sets cookies.
 
-        The search endpoint is more aggressively protected; a prior request
-        on the same session to a lighter page grants the CF clearance cookie
-        that makes the search request succeed.
+        Step 1 — Homepage (least protected, always public).
+        Step 2 — all-discounts page (sets the CF clearance cookie that the
+                  search endpoint requires).
+
+        Returns True if both steps succeeded (HTTP 200/301/302).
         """
-        warm_url = (
-            f"{self.BASE}/region-{psp_region}/collection/all-discounts"
-            f"?page=1&platform=PS5%2CPS4"
-        )
+        scraper = self._get_scraper()
+
+        # Step 1: regional homepage
         try:
-            scraper = self._get_scraper()
-            time.sleep(random.uniform(0.5, 1.5))
-            resp = scraper.get(warm_url, timeout=30)
-            logger.debug(f"[OnlineSearch] Warm-up {psp_region}: HTTP {resp.status_code}")
+            time.sleep(random.uniform(1.5, 3.0))
+            resp = scraper.get(f"{self.BASE}/region-{psp_region}/", timeout=30)
+            logger.debug(
+                f"[OnlineSearch] Warm-up homepage {psp_region}: HTTP {resp.status_code}"
+            )
+            if resp.status_code not in (200, 301, 302, 304):
+                return False
         except Exception as e:
-            logger.debug(f"[OnlineSearch] Warm-up error: {e}")
+            logger.debug(f"[OnlineSearch] Warm-up homepage error: {e}")
+            return False
+
+        # Step 2: all-discounts (heavier CF protection — sets clearance cookie)
+        try:
+            time.sleep(random.uniform(2.0, 4.0))
+            warm_url = (
+                f"{self.BASE}/region-{psp_region}/collection/all-discounts"
+                f"?page=1&platform=PS5%2CPS4"
+            )
+            resp = scraper.get(warm_url, timeout=30)
+            logger.debug(
+                f"[OnlineSearch] Warm-up all-discounts {psp_region}: HTTP {resp.status_code}"
+            )
+            return resp.status_code == 200
+        except Exception as e:
+            logger.debug(f"[OnlineSearch] Warm-up all-discounts error: {e}")
+            return False
 
     def _scrape_and_filter(
         self, psp_region: str, region_code: str, query: str
     ) -> list[SearchResult]:
-        """Fetch PSPrices search results with warm-up + retry logic."""
+        """Fetch PSPrices search results with warm-up + retry logic.
+
+        Key difference from the old approach: warm-up runs on EVERY attempt
+        (including retries with a freshly rotated session) so that each new
+        CloudScraper session gets the CF clearance cookie before hitting the
+        more aggressively protected search endpoint.
+        """
         search_url = (
             f"{self.BASE}/region-{psp_region}/games/"
             f"?q={quote(query)}&platform=PS5%2CPS4"
         )
 
-        # Warm up the session with a lighter page first
-        self._warm_up(psp_region)
-
         max_retries = 3
         for attempt in range(max_retries):
+            # On retry: rotate to a fresh browser profile first
+            if attempt > 0:
+                self._get_scraper(force_new=True)
+
+            # Warm up the (possibly new) session on every attempt
+            warmed = self._warm_up(psp_region)
+            if not warmed:
+                logger.warning(
+                    f"[OnlineSearch] Warm-up failed for {psp_region} "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(random.uniform(5, 10))
+                continue
+
             try:
-                scraper = self._get_scraper(force_new=(attempt > 0))
-                time.sleep(random.uniform(0.5, 2.0))   # jitter
+                scraper = self._get_scraper()
+                time.sleep(random.uniform(1.5, 3.0))  # human-like pause after warm-up
 
                 resp = scraper.get(search_url, timeout=30)
 
@@ -167,7 +206,7 @@ class PSPricesOnlineSearch:
                     return results
 
                 if resp.status_code in (403, 429, 503):
-                    wait = random.uniform(5, 10) * (attempt + 1)
+                    wait = random.uniform(10, 20) * (attempt + 1)
                     logger.warning(
                         f"[OnlineSearch] HTTP {resp.status_code} — "
                         f"retry {attempt + 1}/{max_retries} in {wait:.0f}s"

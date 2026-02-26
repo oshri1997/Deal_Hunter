@@ -61,6 +61,11 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         games = await smart_search_games(session, query, limit=50)
         games = sorted(games, key=_dlc_sort_key)  # main games first
 
+        # Filter out DLC / Points packs — show only main game editions by default
+        main_games = [g for g in games if _dlc_sort_key(g) == 0]
+        if main_games:
+            games = main_games
+
         if games:
             message = await _format_db_results(session, games)
             message += (
