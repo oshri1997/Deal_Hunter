@@ -195,7 +195,12 @@ class PSPricesOnlineSearch:
         self, html: str, region_code: str, query: str
     ) -> list[SearchResult]:
         """Parse .game-fragment cards — server already filtered by query,
-        but we apply an extra word-match pass to drop false positives."""
+        but we apply an extra word-match pass to drop false positives.
+
+        Results are sorted so main game editions appear before DLC / virtual
+        currency packs (e.g. "FC Points 1600"), which tend to flood the top
+        of PSPrices search results because they always have active deals.
+        """
         soup = BeautifulSoup(html, "html.parser")
         cards = soup.select(".game-fragment")
         region_info = config.REGIONS.get(region_code, {})
@@ -207,6 +212,14 @@ class PSPricesOnlineSearch:
             if parsed and _query_matches(query, parsed.title):
                 results.append(parsed)
 
+        # Sort: main editions first, DLC / Points packs last
+        _DLC_KEYWORDS = ("points", "dlc", "pack", "bundle", "currency", "coins")
+
+        def _sort_key(r: SearchResult) -> int:
+            norm = _normalize(r.title)
+            return 1 if any(kw in norm for kw in _DLC_KEYWORDS) else 0
+
+        results.sort(key=_sort_key)
         return results
 
     def _parse_card(
