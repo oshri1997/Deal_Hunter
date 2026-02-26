@@ -69,17 +69,38 @@ class PSPricesOnlineSearch:
         "GB": "gb", "DE": "de", "FR": "fr",
     }
 
-    def __init__(self):
+    def __init__(self, shared_cookies: dict | None = None):
+        """
+        shared_cookies: CF clearance cookies copied from a live PSPricesScraper
+        session.  When provided the first search attempt skips warm-up entirely,
+        because the cookies are already valid for psprices.com.
+        """
+        self._shared_cookies: dict = shared_cookies or {}
         self._scraper: cloudscraper.CloudScraper | None = None
         self._cfg_index = 0
 
     def _get_scraper(self, force_new: bool = False) -> cloudscraper.CloudScraper:
-        """Return (or create) a cloudscraper session, rotating profile on force_new."""
+        """Return (or create) a cloudscraper session, rotating profile on force_new.
+
+        On the very first creation (not a rotation), pre-seeds the session with
+        any shared CF cookies so the first request skips Cloudflare challenge.
+        """
         if self._scraper is None or force_new:
             cfg = _BROWSER_CONFIGS[self._cfg_index % len(_BROWSER_CONFIGS)]
             self._cfg_index += 1
             self._scraper = cloudscraper.create_scraper(browser=cfg)
-            logger.debug(f"[OnlineSearch] New session: {cfg['browser']}/{cfg['platform']}")
+            # Seed shared cookies only on initial creation — not after a rotation,
+            # because a 403 means those cookies are no longer valid.
+            if self._shared_cookies and not force_new:
+                self._scraper.cookies.update(self._shared_cookies)
+                logger.debug(
+                    f"[OnlineSearch] Session seeded with "
+                    f"{len(self._shared_cookies)} shared CF cookies"
+                )
+            else:
+                logger.debug(
+                    f"[OnlineSearch] New session: {cfg['browser']}/{cfg['platform']}"
+                )
         return self._scraper
 
     # ------------------------------------------------------------------
@@ -162,38 +183,53 @@ class PSPricesOnlineSearch:
     def _scrape_and_filter(
         self, psp_region: str, region_code: str, query: str
     ) -> list[SearchResult]:
-        """Fetch PSPrices search results with warm-up + retry logic.
+        """Fetch PSPrices search results.
 
-        Key difference from the old approach: warm-up runs on EVERY attempt
-        (including retries with a freshly rotated session) so that each new
-        CloudScraper session gets the CF clearance cookie before hitting the
-        more aggressively protected search endpoint.
+        Strategy
+        --------
+        Attempt 0 — if shared CF cookies were supplied, skip warm-up and hit
+          the search URL directly.  The cookies come from the live
+          PSPricesScraper session that runs daily scrapes, so they are
+          already valid for psprices.com.
+
+        Attempt 1+ — the cookies either weren't available or have expired
+          (got a 403).  Rotate to a fresh browser profile and run the
+          two-step warm-up (homepage → all-discounts) before retrying.
         """
         search_url = (
             f"{self.BASE}/region-{psp_region}/games/"
             f"?q={quote(query)}&platform=PS5%2CPS4"
         )
 
+        # Track whether the current session has valid CF cookies.
+        # True on first attempt when shared cookies were provided.
+        has_cookies = bool(self._shared_cookies)
+
         max_retries = 3
         for attempt in range(max_retries):
-            # On retry: rotate to a fresh browser profile first
+            # ── Rotate session on every retry ──────────────────────────
             if attempt > 0:
-                self._get_scraper(force_new=True)
+                self._get_scraper(force_new=True)  # new profile, no shared cookies
+                has_cookies = False
 
-            # Warm up the (possibly new) session on every attempt
-            warmed = self._warm_up(psp_region)
-            if not warmed:
-                logger.warning(
-                    f"[OnlineSearch] Warm-up failed for {psp_region} "
-                    f"(attempt {attempt + 1}/{max_retries})"
-                )
-                if attempt < max_retries - 1:
-                    time.sleep(random.uniform(5, 10))
-                continue
+            # ── Warm up only when we don't have pre-seeded cookies ─────
+            if not has_cookies:
+                warmed = self._warm_up(psp_region)
+                if not warmed:
+                    logger.warning(
+                        f"[OnlineSearch] Warm-up failed for {psp_region} "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
+                    if attempt < max_retries - 1:
+                        time.sleep(random.uniform(5, 10))
+                    continue
 
+            # ── Hit the search endpoint ────────────────────────────────
             try:
                 scraper = self._get_scraper()
-                time.sleep(random.uniform(1.5, 3.0))  # human-like pause after warm-up
+                # Shorter pause when cookies already valid, longer after warm-up
+                time.sleep(random.uniform(0.5, 1.5) if has_cookies
+                           else random.uniform(1.5, 3.0))
 
                 resp = scraper.get(search_url, timeout=30)
 
@@ -211,6 +247,7 @@ class PSPricesOnlineSearch:
                         f"[OnlineSearch] HTTP {resp.status_code} — "
                         f"retry {attempt + 1}/{max_retries} in {wait:.0f}s"
                     )
+                    has_cookies = False   # cookies stale — warm up on next attempt
                     time.sleep(wait)
                     continue
 

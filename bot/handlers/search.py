@@ -171,7 +171,22 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if not user_regions:
             user_regions = list(config.REGIONS.keys())
 
-        searcher = PSPricesOnlineSearch()
+        # ── Borrow CF cookies from the live PSPricesScraper session ───
+        # The daily scraper already has valid Cloudflare cookies.
+        # Seeding them into the search session avoids warm-up entirely
+        # on the first attempt, which is why "Warm-up failed" was common.
+        shared_cookies: dict = {}
+        scheduler = context.bot_data.get("scheduler")
+        if scheduler:
+            psp = scheduler.scraper_manager.scraper
+            if psp._scraper is not None:
+                shared_cookies = dict(psp._scraper.cookies)
+                logger.debug(
+                    f"[Search] Borrowed {len(shared_cookies)} CF cookies "
+                    "from live PSPricesScraper session"
+                )
+
+        searcher = PSPricesOnlineSearch(shared_cookies=shared_cookies)
         # Get all results across all user regions (no dedup)
         results = await searcher.search(query, region_codes=user_regions)
     except Exception as e:
