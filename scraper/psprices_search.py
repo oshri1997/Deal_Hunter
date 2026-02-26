@@ -13,6 +13,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import cloudscraper
 from bs4 import BeautifulSoup
@@ -125,10 +126,10 @@ class PSPricesOnlineSearch:
     def _scrape_and_filter(
         self, psp_region: str, region_code: str, query: str
     ) -> list[SearchResult]:
-        """Fetch page 1 of all-discounts and filter by query."""
+        """Fetch PSPrices search results for the query."""
         url = (
-            f"{self.BASE}/region-{psp_region}/collection/all-discounts"
-            f"?page=1&platform=PS5%2CPS4"
+            f"{self.BASE}/region-{psp_region}/games/"
+            f"?q={quote(query)}&platform=PS5%2CPS4"
         )
         try:
             scraper = self._get_scraper()

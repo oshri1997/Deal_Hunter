@@ -156,9 +156,14 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     try:
         from scraper.psprices_search import PSPricesOnlineSearch
+        from bot.helpers import get_user_regions
+
+        user_regions = await get_user_regions(update.effective_user.id)
+        if not user_regions:
+            user_regions = list(config.REGIONS.keys())
 
         searcher = PSPricesOnlineSearch()
-        results = await searcher.search(query, max_results=10)
+        results = await searcher.search(query, region_codes=user_regions, max_results=10)
     except Exception as e:
         logger.error(f"Online search failed: {e}", exc_info=True)
         await update.message.reply_text("❌ Online search failed. Try again later.")
