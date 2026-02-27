@@ -67,7 +67,9 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             games = main_games
 
         if games:
-            message, flat_games = await _format_db_results(session, games)
+            from bot.helpers import get_user_regions
+            user_regions = await get_user_regions(update.effective_user.id) or list(config.REGIONS.keys())
+            message, flat_games = await _format_db_results(session, games, user_regions)
             message += (
                 "\n\n📝 Reply with a <b>number</b> to see details.\n"
                 "🌐 Didn't find your game? Send <b>0</b> to search online."
@@ -270,7 +272,7 @@ def _cleanup_context(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _format_db_results(
-    session, games: list[Game]
+    session, games: list[Game], user_regions: list[str] | None = None
 ) -> tuple[str, list[dict]]:
     """Format games grouped by region with prices.
 
@@ -317,6 +319,8 @@ async def _format_db_results(
     for region_code, game_deals in regions.items():
         if truncated:
             break
+        if user_regions and region_code not in user_regions:
+            continue
 
         region_info = config.REGIONS.get(region_code, {})
         flag        = region_info.get("flag", "")
@@ -333,7 +337,7 @@ async def _format_db_results(
         region_lines: list[str] = [region_header]
         region_games: list[dict] = []
 
-        for game, deal in game_deals:
+        for game, deal in game_deals[:10]:  # max 10 per region
             psn_link   = f"{store_url}/search/{quote(game.title)}" if store_url else ""
             price      = float(deal.price)
             currency   = deal.currency or "USD"
