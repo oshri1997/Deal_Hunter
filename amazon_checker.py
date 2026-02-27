@@ -19,39 +19,39 @@ class AmazonChecker:
         self.last_status = None
     
     async def check_availability(self) -> tuple[bool, str]:
-        """Check if gift card is available
-        
-        Returns:
-            (is_available, message)
-        """
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.URL, headers=self.headers, timeout=30) as resp:
-                    if resp.status != 200:
-                        logger.error(f"Amazon returned status {resp.status}")
-                        return False, f"Error: Status {resp.status}"
-                    
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    
-                    # Check for unavailable message
-                    unavailable = soup.find('span', class_='a-size-medium a-color-success primary-availability-message')
-                    
-                    if unavailable and 'unavailable' in unavailable.get_text().lower():
+        """Check if gift card is available, with up to 3 retries."""
+        import asyncio
+        last_error = "Status unknown"
+        for attempt in range(3):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        self.URL, headers=self.headers,
+                        timeout=aiohttp.ClientTimeout(total=30)
+                    ) as resp:
+                        if resp.status != 200:
+                            last_error = f"Error: Status {resp.status}"
+                            await asyncio.sleep(3)
+                            continue
+
+                        html = await resp.text()
+                        soup = BeautifulSoup(html, 'html.parser')
+
+                        unavailable = soup.find('span', class_='a-size-medium a-color-success primary-availability-message')
+                        if unavailable and 'unavailable' in unavailable.get_text().lower():
+                            return False, "Currently unavailable"
+
+                        available = soup.find('span', class_='a-size-medium a-color-success')
+                        if available and 'in stock' in available.get_text().lower():
+                            return True, "In Stock!"
+
+                        add_to_cart = soup.find('input', {'id': 'add-to-cart-button'})
+                        if add_to_cart:
+                            return True, "Available (Add to Cart button found)"
+
                         return False, "Currently unavailable"
-                    
-                    # Check for available/in stock
-                    available = soup.find('span', class_='a-size-medium a-color-success')
-                    if available and 'in stock' in available.get_text().lower():
-                        return True, "In Stock!"
-                    
-                    # Check add to cart button
-                    add_to_cart = soup.find('input', {'id': 'add-to-cart-button'})
-                    if add_to_cart:
-                        return True, "Available (Add to Cart button found)"
-                    
-                    return False, "Status unknown"
-                    
-        except Exception as e:
-            logger.error(f"Amazon checker error: {e}")
-            return False, f"Error: {str(e)}"
+            except Exception as e:
+                last_error = f"Error: {str(e)}"
+                logger.error(f"Amazon checker error (attempt {attempt+1}): {e}")
+                await asyncio.sleep(3)
+        return False, last_error
