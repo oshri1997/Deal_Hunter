@@ -45,6 +45,10 @@ async def init_db():
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_following BOOLEAN NOT NULL DEFAULT FALSE"
         ))
+        # Add pending_notification column for decoupled scan/delivery
+        await conn.execute(text(
+            "ALTER TABLE active_deals ADD COLUMN IF NOT EXISTS pending_notification BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
     logger.info("Database tables created successfully")
 
 

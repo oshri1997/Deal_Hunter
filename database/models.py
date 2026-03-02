@@ -101,6 +101,7 @@ class ActiveDeal(Base):
     price_tag: Mapped[str | None] = mapped_column(String(50))  # "New lowest!", "Lowest", etc.
     page_number: Mapped[int] = mapped_column(Integer, default=1)  # Which page
     position_on_page: Mapped[int] = mapped_column(Integer, default=0)  # Position 0-35
+    pending_notification: Mapped[bool] = mapped_column(Boolean, default=False)  # Awaiting delivery at 09:00
 
     game: Mapped["Game"] = relationship(back_populates="active_deals")
 

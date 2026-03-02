@@ -3,7 +3,8 @@
     "allow": [
       "Bash(wc:*)",
       "Bash(git check-ignore -v .pytest_cache/)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(python:*)"
     ]
   }
 }

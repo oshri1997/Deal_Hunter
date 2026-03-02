@@ -19,7 +19,7 @@ class ScraperManager:
     def __init__(self):
         self.scraper = PSPricesScraper()
 
-    async def scrape_all_regions(self, full_scrape: bool = False) -> list[ActiveDeal]:
+    async def scrape_all_regions(self, full_scrape: bool = False, mark_pending: bool = False) -> list[ActiveDeal]:
         """Scrape deals from all supported regions using PSPrices.
 
         Args:
@@ -37,7 +37,7 @@ class ScraperManager:
                         return
                     deals = await self.scraper.scrape_region(region_code, full_scrape=full_scrape)
                     if deals:
-                        new_deals = await self._persist_deals(region_code, deals)
+                        new_deals = await self._persist_deals(region_code, deals, mark_pending=mark_pending)
                         if new_deals:
                             for deal in new_deals:
                                 all_new_deals.append((region_code, deal))
@@ -72,7 +72,7 @@ class ScraperManager:
             return await self._persist_deals(region_code, deals)
         return []
 
-    async def _persist_deals(self, region_code: str, deals: list) -> list:
+    async def _persist_deals(self, region_code: str, deals: list, mark_pending: bool = False) -> list:
         """Store scraped deals in database using batch operations for speed."""
         new_deals = []
         logger.info(f"Persisting {len(deals)} deals for {region_code}...")
@@ -127,14 +127,15 @@ class ScraperManager:
                         price_tag=deal.price_tag,
                         page_number=deal.page_number,
                         position_on_page=deal.position_on_page,
+                        pending_notification=mark_pending,
                     )
                     session.add(active_deal)
                 else:
                     # Check if price or discount changed (real changes)
-                    if (float(existing_deal.price) != float(deal.price) or 
+                    if (float(existing_deal.price) != float(deal.price) or
                         existing_deal.discount_percent != deal.discount_percent):
                         is_new = True
-                    
+
                     # Always update all fields
                     existing_deal.price = deal.price
                     existing_deal.original_price = deal.original_price
@@ -143,6 +144,8 @@ class ScraperManager:
                     existing_deal.price_tag = deal.price_tag
                     existing_deal.page_number = deal.page_number
                     existing_deal.position_on_page = deal.position_on_page
+                    if is_new and mark_pending:
+                        existing_deal.pending_notification = True
                 
                 # Add price history
                 price_record = Price(

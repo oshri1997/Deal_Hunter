@@ -74,6 +74,32 @@ class NotificationEngine:
                         sent_user_ids.add(user.id)
                         await asyncio.sleep(0.05)
 
+    async def deliver_pending_deals(self):
+        """Deliver notifications for deals marked as pending from the scheduled scan."""
+        logger.info("Delivering pending deal notifications...")
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(ActiveDeal).where(ActiveDeal.pending_notification == True)
+            )
+            pending_deals = result.scalars().all()
+
+            if not pending_deals:
+                logger.info("No pending deals to deliver")
+                return
+
+            logger.info(f"Found {len(pending_deals)} pending deals to deliver")
+
+            # Notify users about these deals
+            await self.notify_new_deals(pending_deals)
+
+            # Clear the pending flag
+            for deal in pending_deals:
+                deal.pending_notification = False
+            await session.commit()
+
+            logger.info(f"Delivered {len(pending_deals)} pending deals and cleared flags")
+
     async def check_price_alerts(self):
         """Check all active price alerts against current deals"""
         logger.info("Checking price alerts...")

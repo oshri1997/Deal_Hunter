@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -8,6 +9,7 @@ from telegram import Bot
 from scraper.manager import ScraperManager
 from notification import NotificationEngine
 from amazon_checker import AmazonChecker
+from engagement import send_engagement_message
 from config import config
 from database.engine import get_session
 from database.models import User
@@ -28,15 +30,24 @@ class DealScheduler:
     
     def start(self, run_initial_scrape: bool = True):
         """Start all scheduled jobs"""
-        # Daily full scrape at 02:00
+        # Daily scan at 04:00 - scrape deals and mark pending
         self.scheduler.add_job(
-            self._scrape_and_notify,
-            trigger=CronTrigger(hour=2, minute=0),
+            self._scrape_deals,
+            trigger=CronTrigger(hour=4, minute=0),
             id="scrape_deals",
-            name="Daily scrape at 02:00 (2 pages)",
+            name="Daily scrape at 04:00 (2 pages)",
             replace_existing=True
         )
-        
+
+        # Daily delivery at 09:00 - send pending notifications
+        self.scheduler.add_job(
+            self._deliver_deals,
+            trigger=CronTrigger(hour=9, minute=0),
+            id="deliver_deals",
+            name="Daily delivery at 09:00",
+            replace_existing=True
+        )
+
         # Cleanup expired deals daily
         self.scheduler.add_job(
             self._cleanup_expired_deals,
@@ -45,8 +56,8 @@ class DealScheduler:
             name="Cleanup expired deals",
             replace_existing=True
         )
-        
-        # Check Amazon gift card every 3 hours
+
+        # Check Amazon gift card every 30 minutes
         self.scheduler.add_job(
             self._check_amazon,
             trigger=IntervalTrigger(hours=0.5),
@@ -54,9 +65,12 @@ class DealScheduler:
             name="Check Amazon gift card",
             replace_existing=True
         )
-        
+
+        # Engagement messages every 4-6 hours (random interval)
+        self._schedule_next_engagement()
+
         self.scheduler.start()
-        logger.info("Scheduler started - Daily scrape at 02:00 (2 pages), Amazon check every 3 hours")
+        logger.info("Scheduler started - Scrape at 04:00, Deliver at 09:00, Amazon check every 30min, engagement every 4-6h")
         
         if run_initial_scrape:
             self.scheduler.add_job(
@@ -80,20 +94,37 @@ class DealScheduler:
         except Exception as e:
             logger.error(f"Error in initial scrape: {e}", exc_info=True)
     
-    async def _scrape_and_notify(self):
-        """Daily scrape (2 pages) and notifications"""
+    async def _scrape_deals(self):
+        """04:00 job: scrape deals and mark them pending for later delivery"""
         logger.info("Starting daily scraping job (2 pages per region)")
+        try:
+            new_deals = await self.scraper_manager.scrape_all_regions(
+                full_scrape=False, mark_pending=True
+            )
+            logger.info(f"Scrape complete: {len(new_deals)} new/updated deals marked pending for 09:00 delivery")
+        except Exception as e:
+            logger.error(f"Error in scraping job: {e}", exc_info=True)
+
+    async def _deliver_deals(self):
+        """09:00 job: deliver pending deal notifications and check price alerts"""
+        logger.info("Starting deal delivery job")
+        try:
+            await self.notification_engine.deliver_pending_deals()
+            await self.notification_engine.check_price_alerts()
+        except Exception as e:
+            logger.error(f"Error in delivery job: {e}", exc_info=True)
+
+    async def scrape_and_notify_now(self):
+        """Manual trigger: scrape and immediately notify (used by admin commands)"""
+        logger.info("Starting manual scrape + notify")
         try:
             new_deals = await self.scraper_manager.scrape_all_regions(full_scrape=False)
             logger.info(f"Found {len(new_deals)} new/updated deals")
-            
             if new_deals:
                 await self.notification_engine.notify_new_deals(new_deals)
-
-            # Check price alerts after scraping
             await self.notification_engine.check_price_alerts()
         except Exception as e:
-            logger.error(f"Error in scraping job: {e}", exc_info=True)
+            logger.error(f"Error in manual scrape+notify: {e}", exc_info=True)
     
     async def _cleanup_expired_deals(self):
         """Remove expired deals from database"""
@@ -103,6 +134,26 @@ class DealScheduler:
         except Exception as e:
             logger.error(f"Error in cleanup job: {e}", exc_info=True)
     
+    def _schedule_next_engagement(self):
+        """Schedule the next engagement message with a random 4-6 hour interval."""
+        hours = random.uniform(4, 6)
+        self.scheduler.add_job(
+            self._send_engagement,
+            trigger=IntervalTrigger(hours=hours),
+            id="engagement_message",
+            name=f"Engagement message (every {hours:.1f}h)",
+            replace_existing=True,
+        )
+
+    async def _send_engagement(self):
+        """Send an engagement message then reschedule with a new random interval."""
+        try:
+            await send_engagement_message(self.bot)
+        except Exception as e:
+            logger.error(f"Error sending engagement message: {e}", exc_info=True)
+        # Reschedule with a fresh random interval for next time
+        self._schedule_next_engagement()
+
     async def _check_amazon(self):
         """Check Amazon PlayStation gift card availability"""
         logger.info("Checking Amazon gift card...")

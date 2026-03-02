@@ -117,23 +117,33 @@ async def _next_scrape(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     from datetime import datetime, timedelta
-    
+
     now = datetime.now()
-    next_scrape = now.replace(hour=2, minute=0, second=0, microsecond=0)
-    
-    # If it's past 02:00 today, show tomorrow's time
-    if now.hour >= 2:
-        next_scrape += timedelta(days=1)
-    
-    time_until = next_scrape - now
-    hours = int(time_until.total_seconds() // 3600)
-    minutes = int((time_until.total_seconds() % 3600) // 60)
-    
+
+    # Next scan at 04:00
+    next_scan = now.replace(hour=4, minute=0, second=0, microsecond=0)
+    if now.hour >= 4:
+        next_scan += timedelta(days=1)
+    scan_until = next_scan - now
+    scan_h = int(scan_until.total_seconds() // 3600)
+    scan_m = int((scan_until.total_seconds() % 3600) // 60)
+
+    # Next delivery at 09:00
+    next_delivery = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    if now.hour >= 9:
+        next_delivery += timedelta(days=1)
+    delivery_until = next_delivery - now
+    del_h = int(delivery_until.total_seconds() // 3600)
+    del_m = int((delivery_until.total_seconds() % 3600) // 60)
+
     await update.message.reply_text(
-        f"⏰ <b>Next Scheduled Scrape</b>\n\n"
-        f"📅 Date: {next_scrape.strftime('%Y-%m-%d')}\n"
-        f"🕐 Time: <b>{next_scrape.strftime('%H:%M')}</b>\n\n"
-        f"⏳ Time remaining: <b>{hours}h {minutes}m</b>",
+        f"⏰ <b>Next Scheduled Jobs</b>\n\n"
+        f"🔍 <b>Scan</b> (scrape deals):\n"
+        f"  📅 {next_scan.strftime('%Y-%m-%d')} at <b>{next_scan.strftime('%H:%M')}</b>\n"
+        f"  ⏳ In <b>{scan_h}h {scan_m}m</b>\n\n"
+        f"📬 <b>Delivery</b> (send notifications):\n"
+        f"  📅 {next_delivery.strftime('%Y-%m-%d')} at <b>{next_delivery.strftime('%H:%M')}</b>\n"
+        f"  ⏳ In <b>{del_h}h {del_m}m</b>",
         parse_mode='HTML'
     )
 
