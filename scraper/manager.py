@@ -208,6 +208,7 @@ class ScraperManager:
                 select(ActiveDeal)
                 .join(Game)
                 .where(ActiveDeal.region_code == region_code)
+                .where(ActiveDeal.page_number > 0)
                 .order_by(ActiveDeal.page_number.asc(), ActiveDeal.position_on_page.asc())
                 .limit(limit)
                 .options(contains_eager(ActiveDeal.game))

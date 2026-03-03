@@ -203,7 +203,6 @@ class NotificationEngine:
         end_date_str = deal.sale_end_date.strftime('%Y-%m-%d') if deal.sale_end_date else "Unknown"
         search_query = quote(game.title)
         psn_link = f"{store_url}/search/{search_query}" if store_url else ""
-        cdkeys_link = f"https://www.cdkeys.com/catalogsearch/result?q={search_query}"
 
         ils_suffix = ""
         if currency != "ILS":
@@ -216,8 +215,7 @@ class NotificationEngine:
             f"💰 {currency_symbol}{deal.price:.2f}{ils_suffix} (was {currency_symbol}{deal.original_price:.2f})\n"
             f"🔥 {deal.discount_percent}% OFF\n"
             f"⏰ Ends: {end_date_str}\n\n"
-            f"🛒 PS Store: {psn_link}\n"
-            f"🔑 CDKeys: {cdkeys_link}"
+            f"🛒 PS Store: {psn_link}"
         )
 
         try:
