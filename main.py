@@ -23,6 +23,7 @@ from bot.handlers import (
     scrape_psp_handler,
     giftcard_handler,
     check_amazon_handler,
+    offgamers_handler,
     next_scrape_handler,
     clear_db_handler,
     search_handler,
@@ -97,6 +98,7 @@ def main():
     application.add_handler(scrape_psp_handler)
     application.add_handler(giftcard_handler)
     application.add_handler(check_amazon_handler)
+    application.add_handler(offgamers_handler)
     application.add_handler(next_scrape_handler)
     application.add_handler(clear_db_handler)
     application.add_handler(search_handler)

@@ -4,7 +4,9 @@
       "Bash(wc:*)",
       "Bash(git check-ignore -v .pytest_cache/)",
       "Bash(python -c \":*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "WebFetch(domain:www.offgamers.com)",
+      "WebFetch(domain:api.offgamers.com)"
     ]
   }
 }

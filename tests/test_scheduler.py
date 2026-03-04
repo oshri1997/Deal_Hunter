@@ -14,8 +14,7 @@ def bot():
 @pytest.fixture
 def deal_scheduler(bot):
     with patch("scheduler.ScraperManager"), \
-         patch("scheduler.NotificationEngine"), \
-         patch("scheduler.AmazonChecker"):
+         patch("scheduler.NotificationEngine"):
         ds = DealScheduler(bot)
         return ds
 

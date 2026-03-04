@@ -237,7 +237,6 @@ class TestEngagementSchedulingInterval:
         """_schedule_next_engagement should create a job with 4-6h interval."""
         with patch("scheduler.ScraperManager"), \
              patch("scheduler.NotificationEngine"), \
-             patch("scheduler.AmazonChecker"), \
              patch("scheduler.random") as mock_random:
             mock_random.uniform.return_value = 5.0
 

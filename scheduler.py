@@ -8,7 +8,7 @@ from sqlalchemy import select
 from telegram import Bot
 from scraper.manager import ScraperManager
 from notification import NotificationEngine
-from amazon_checker import AmazonChecker
+from offgamers_checker import check_offgamers_stock
 from engagement import send_engagement_message
 from config import config
 from database.engine import get_session
@@ -25,8 +25,7 @@ class DealScheduler:
         self.scheduler = AsyncIOScheduler()
         self.scraper_manager = ScraperManager()
         self.notification_engine = NotificationEngine(bot)
-        self.amazon_checker = AmazonChecker()
-        self.admin_chat_id = None  # Set via /check_amazon command
+        self._offgamers_last_status = False
     
     def start(self, run_initial_scrape: bool = True):
         """Start all scheduled jobs"""
@@ -57,12 +56,12 @@ class DealScheduler:
             replace_existing=True
         )
 
-        # Check Amazon gift card every 30 minutes
+        # Check OffGamers gift card every 30 minutes
         self.scheduler.add_job(
-            self._check_amazon,
-            trigger=IntervalTrigger(hours=0.5),
-            id="amazon_check",
-            name="Check Amazon gift card",
+            self._check_offgamers,
+            trigger=IntervalTrigger(minutes=30),
+            id="offgamers_check",
+            name="Check OffGamers gift card",
             replace_existing=True
         )
 
@@ -70,7 +69,7 @@ class DealScheduler:
         self._schedule_next_engagement()
 
         self.scheduler.start()
-        logger.info("Scheduler started - Scrape at 04:00, Deliver at 09:00, Amazon check every 30min, engagement every 4-6h")
+        logger.info("Scheduler started - Scrape at 04:00, Deliver at 09:00, Amazon+OffGamers check every 30min, engagement every 4-6h")
         
         if run_initial_scrape:
             self.scheduler.add_job(
@@ -154,59 +153,42 @@ class DealScheduler:
         # Reschedule with a fresh random interval for next time
         self._schedule_next_engagement()
 
-    async def _check_amazon(self):
-        """Check Amazon PlayStation gift card availability"""
-        logger.info("Checking Amazon gift card...")
+    async def _check_offgamers(self):
+        """Check OffGamers stock and notify admin + followers if back in stock."""
+        logger.info("Checking OffGamers gift card stock...")
         try:
-            is_available, message = await self.amazon_checker.check_availability()
+            in_stock, _ = await check_offgamers_stock()
+            is_available = bool(in_stock)
 
-            # Notify when status changes to available
-            if is_available and self.amazon_checker.last_status != True:
-                logger.info("🎮 Amazon gift card NOW AVAILABLE!")
+            if is_available and not self._offgamers_last_status:
                 alert_text = (
-                    f"🎮 <b>Amazon Gift Card Alert!</b>\n\n"
-                    f"Status: {message}\n\n"
-                    f"🛒 Buy now: {self.amazon_checker.URL}"
+                    f"🎮 <b>OffGamers Gift Card IN STOCK!</b>\n\n"
+                    f"Available: {', '.join(in_stock)}\n\n"
+                    f"🛒 Buy now: https://www.offgamers.com/product/playstation-store-gift-cards"
+                    f"?region_id=492c3ca6-c4e6-47fc-b274-c2c35031b271"
                 )
-
-                # Notify admin
                 if config.ADMIN_USER_ID:
-                    try:
-                        await self.bot.send_message(
-                            chat_id=config.ADMIN_USER_ID,
-                            text=alert_text,
-                            parse_mode="HTML",
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to send Amazon alert to admin: {e}")
+                    await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
 
-                # Notify all followers
                 async with get_session() as session:
-                    result = await session.execute(
-                        select(User).where(User.is_following == True)
-                    )
+                    result = await session.execute(select(User).where(User.is_following == True))
                     followers = result.scalars().all()
 
                 notified = 0
                 for follower in followers:
                     if follower.id == config.ADMIN_USER_ID:
-                        continue  # already notified above
+                        continue
                     try:
-                        await self.bot.send_message(
-                            chat_id=follower.id,
-                            text=alert_text,
-                            parse_mode="HTML",
-                        )
+                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
                         notified += 1
                         await asyncio.sleep(0.05)
                     except Exception as e:
-                        logger.error(f"Failed to send Amazon alert to follower {follower.id}: {e}")
+                        logger.error(f"Failed to send OffGamers alert to {follower.id}: {e}")
 
-                logger.info(f"Gift card alert sent to {notified} follower(s)")
+                logger.info(f"OffGamers alert sent to {notified} follower(s)")
             else:
-                logger.info(f"Amazon status: {message}")
+                logger.info(f"OffGamers in_stock={in_stock}")
 
-            self.amazon_checker.last_status = is_available
-
+            self._offgamers_last_status = is_available
         except Exception as e:
-            logger.error(f"Error in Amazon check: {e}", exc_info=True)
+            logger.error(f"Error in OffGamers check: {e}", exc_info=True)
