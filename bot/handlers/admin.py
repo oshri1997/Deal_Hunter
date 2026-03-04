@@ -3,10 +3,12 @@ import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 from scraper.manager import ScraperManager
+from amazon_checker import AmazonChecker
 from offgamers_checker import check_offgamers_stock
 
 logger = logging.getLogger(__name__)
 scraper_manager = ScraperManager()
+amazon_checker = AmazonChecker()
 
 ADMIN_IDS = [680723948]  # Oshri Moaelm
 
@@ -71,8 +73,31 @@ async def _scrape_psp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _check_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check OffGamers stock (replaces old Amazon checker)."""
-    await update.message.reply_text("🔍 Checking OffGamers gift card stock...")
+    """Check Amazon India PlayStation gift card availability."""
+    await update.message.reply_text("🔍 Checking Amazon gift card...")
+    try:
+        is_available, message = await amazon_checker.check_availability()
+        if is_available:
+            await update.message.reply_text(
+                f"✅ <b>Amazon Gift Card Available!</b>\n\nStatus: {message}\n\n🛒 Buy now: {amazon_checker.URL}",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ <b>Not Available</b>\n\nStatus: {message}\n\n🔗 {amazon_checker.URL}",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        logger.error(f"Amazon check error: {e}", exc_info=True)
+
+
+async def _check_offgamers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin only: check OffGamers INR gift card stock."""
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⛔ Admin only command")
+        return
+    await update.message.reply_text("🔍 Checking OffGamers stock...")
     try:
         in_stock, out_of_stock = await check_offgamers_stock()
         lines = ["🛒 <b>OffGamers PlayStation Gift Cards (INR)</b>\n"]
@@ -86,16 +111,8 @@ async def _check_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append("⚠️ Could not parse denominations.")
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+        await update.message.reply_text(f"❌ Error: {e}")
         logger.error(f"OffGamers check error: {e}", exc_info=True)
-
-
-async def _check_offgamers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin only: check OffGamers INR gift card stock."""
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Admin only command")
-        return
-    await _check_amazon(update, context)
 
 
 async def _next_scrape(update: Update, context: ContextTypes.DEFAULT_TYPE):

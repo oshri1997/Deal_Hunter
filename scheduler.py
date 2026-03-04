@@ -8,6 +8,7 @@ from sqlalchemy import select
 from telegram import Bot
 from scraper.manager import ScraperManager
 from notification import NotificationEngine
+from amazon_checker import AmazonChecker
 from offgamers_checker import check_offgamers_stock
 from engagement import send_engagement_message
 from config import config
@@ -25,6 +26,7 @@ class DealScheduler:
         self.scheduler = AsyncIOScheduler()
         self.scraper_manager = ScraperManager()
         self.notification_engine = NotificationEngine(bot)
+        self.amazon_checker = AmazonChecker()
         self._offgamers_last_status = False
     
     def start(self, run_initial_scrape: bool = True):
@@ -53,6 +55,15 @@ class DealScheduler:
             trigger=CronTrigger(hour=3, minute=0),
             id="cleanup_deals",
             name="Cleanup expired deals",
+            replace_existing=True
+        )
+
+        # Check Amazon gift card every 30 minutes
+        self.scheduler.add_job(
+            self._check_amazon,
+            trigger=IntervalTrigger(minutes=30),
+            id="amazon_check",
+            name="Check Amazon gift card",
             replace_existing=True
         )
 
@@ -152,6 +163,36 @@ class DealScheduler:
             logger.error(f"Error sending engagement message: {e}", exc_info=True)
         # Reschedule with a fresh random interval for next time
         self._schedule_next_engagement()
+
+    async def _check_amazon(self):
+        """Check Amazon India PlayStation gift card availability."""
+        logger.info("Checking Amazon gift card...")
+        try:
+            is_available, message = await self.amazon_checker.check_availability()
+            if is_available and self.amazon_checker.last_status != True:
+                alert_text = (
+                    f"🎮 <b>Amazon Gift Card IN STOCK!</b>\n\n"
+                    f"Status: {message}\n\n"
+                    f"🛒 Buy now: {self.amazon_checker.URL}"
+                )
+                if config.ADMIN_USER_ID:
+                    await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
+                async with get_session() as session:
+                    result = await session.execute(select(User).where(User.is_following == True))
+                    followers = result.scalars().all()
+                for follower in followers:
+                    if follower.id == config.ADMIN_USER_ID:
+                        continue
+                    try:
+                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
+                        await asyncio.sleep(0.05)
+                    except Exception as e:
+                        logger.error(f"Failed to send Amazon alert to {follower.id}: {e}")
+            else:
+                logger.info(f"Amazon status: {message}")
+            self.amazon_checker.last_status = is_available
+        except Exception as e:
+            logger.error(f"Error in Amazon check: {e}", exc_info=True)
 
     async def _check_offgamers(self):
         """Check OffGamers stock and notify admin + followers if back in stock."""
