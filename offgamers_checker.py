@@ -11,7 +11,16 @@ async def check_offgamers_stock() -> tuple[list[str], list[str]]:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--disable-dev-shm-usage"])
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-setuid-sandbox",
+                "--single-process",
+            ],
+        )
         page = await browser.new_page()
         try:
             await page.goto(URL, wait_until="networkidle", timeout=30000)
