@@ -210,23 +210,7 @@ class DealScheduler:
                 )
                 if config.ADMIN_USER_ID:
                     await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
-
-                async with get_session() as session:
-                    result = await session.execute(select(User).where(User.is_following == True))
-                    followers = result.scalars().all()
-
-                notified = 0
-                for follower in followers:
-                    if follower.id == config.ADMIN_USER_ID:
-                        continue
-                    try:
-                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
-                        notified += 1
-                        await asyncio.sleep(0.05)
-                    except Exception as e:
-                        logger.error(f"Failed to send OffGamers alert to {follower.id}: {e}")
-
-                logger.info(f"OffGamers alert sent to {notified} follower(s)")
+                    logger.info("OffGamers alert sent to admin")
             else:
                 logger.info(f"OffGamers in_stock={in_stock}")
 
