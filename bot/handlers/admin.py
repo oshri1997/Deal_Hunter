@@ -100,7 +100,8 @@ async def _check_offgamers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔍 Checking OffGamers stock...")
     try:
         in_stock, out_of_stock = await check_offgamers_stock()
-        lines = ["🛒 <b>OffGamers PlayStation Gift Cards (INR)</b>\n"]
+        url = "https://www.offgamers.com/product/playstation-store-gift-cards?region_id=492c3ca6-c4e6-47fc-b274-c2c35031b271"
+        lines = [f"🛒 <b>OffGamers PlayStation Gift Cards (INR)</b>\n🔗 <a href=\"{url}\">View on OffGamers</a>\n"]
         if in_stock:
             lines.append("✅ <b>In Stock:</b>")
             lines.extend(f"  • {d}" for d in in_stock)

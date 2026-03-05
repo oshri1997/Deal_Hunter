@@ -29,12 +29,15 @@ class AmazonChecker:
                             continue
                         html = await resp.text()
                         soup = BeautifulSoup(html, 'html.parser')
-                        unavailable = soup.find('span', class_='a-size-medium a-color-success primary-availability-message')
-                        if unavailable and 'unavailable' in unavailable.get_text().lower():
-                            return False, "Currently unavailable"
-                        available = soup.find('span', class_='a-size-medium a-color-success')
-                        if available and 'in stock' in available.get_text().lower():
-                            return True, "In Stock!"
+                        # Primary: check the #availability div (most reliable)
+                        avail_div = soup.find('div', id='availability')
+                        if avail_div:
+                            avail_text = avail_div.get_text().strip().lower()
+                            if 'unavailable' in avail_text:
+                                return False, "Currently unavailable"
+                            if 'in stock' in avail_text:
+                                return True, "In Stock!"
+                        # Secondary: check for Add to Cart button
                         if soup.find('input', {'id': 'add-to-cart-button'}):
                             return True, "Available (Add to Cart button found)"
                         return False, "Currently unavailable"
