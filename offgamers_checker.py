@@ -1,45 +1,36 @@
 import logging
-import asyncio
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
-URL = "https://www.offgamers.com/product/playstation-store-gift-cards?region_id=492c3ca6-c4e6-47fc-b274-c2c35031b271"
+API_URL = "https://sls.offgamers.com/offer/search/lite"
+API_PARAMS = {
+    "service_id": "fdf75033-56ee-4ce6-929c-1f9c93a4c642",
+    "brand_id": "1f49ed55-574b-432d-b63a-fde20cbb5097",
+    "region_id": "492c3ca6-c4e6-47fc-b274-c2c35031b271",
+    "country": "IN",
+    "currency": "USD",
+}
 
 
 async def check_offgamers_stock() -> tuple[list[str], list[str]]:
-    """Return (in_stock, out_of_stock) using Playwright to render the Vue SPA."""
-    from playwright.async_api import async_playwright
+    """Return (in_stock, out_of_stock) by querying the OffGamers API directly."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            API_URL, params=API_PARAMS, timeout=aiohttp.ClientTimeout(total=15)
+        ) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-setuid-sandbox",
-            ],
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
-        try:
-            await page.goto(URL, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_selector(".h-denom-card", timeout=15000)
+    in_stock, out_of_stock = [], []
+    for group in data.get("payload", {}).get("results", []):
+        for offer in group.get("offer_results", []):
+            title = offer.get("title", "").strip()
+            if not title:
+                continue
+            if offer.get("is_sold_out"):
+                out_of_stock.append(title)
+            else:
+                in_stock.append(title)
 
-            in_stock, out_of_stock = [], []
-            for card in await page.query_selector_all(".h-denom-card"):
-                span = await card.query_selector("span.text-body1")
-                if not span:
-                    continue
-                text = (await span.inner_text()).strip()
-                classes = await span.get_attribute("class") or ""
-                if "h-denom-card--dimmed" in classes:
-                    out_of_stock.append(text)
-                else:
-                    in_stock.append(text)
-
-            return in_stock, out_of_stock
-        finally:
-            await browser.close()
+    return in_stock, out_of_stock

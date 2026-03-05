@@ -6,7 +6,9 @@
       "Bash(python -c \":*)",
       "Bash(python:*)",
       "WebFetch(domain:www.offgamers.com)",
-      "WebFetch(domain:api.offgamers.com)"
+      "WebFetch(domain:api.offgamers.com)",
+      "WebFetch(domain:assets.offgamers.com)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)"
     ]
   }
 }
