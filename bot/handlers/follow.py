@@ -3,7 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user
+from bot.helpers import get_or_create_user, is_subscriber
 from database.engine import get_session
 from database.models import User
 
@@ -14,6 +14,14 @@ async def _follow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /follow - toggle gift card availability notifications."""
     tg_user = update.effective_user
     await get_or_create_user(tg_user)
+
+    if not await is_subscriber(tg_user.id):
+        await update.message.reply_text(
+            "🔒 This feature is for subscribers only.\n"
+            "Use /subscribe to get started.",
+            parse_mode="HTML",
+        )
+        return
 
     async with get_session() as session:
         user = await session.get(User, tg_user.id)
