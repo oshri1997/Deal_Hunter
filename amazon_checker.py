@@ -39,9 +39,7 @@ class AmazonChecker:
                             await asyncio.sleep(3)
                             continue
                         html = await resp.text()
-                        result = self._parse_availability(html)
-                        logger.info(f"Amazon check result: {result}, HTML length: {len(html)}")
-                        return result
+                        return self._parse_availability(html)
             except Exception as e:
                 last_error = f"Error: {str(e)}"
                 logger.error(f"Amazon checker error (attempt {attempt+1}): {e}")
@@ -50,11 +48,12 @@ class AmazonChecker:
 
     def _parse_availability(self, html: str) -> tuple[bool, str]:
         """Parse Amazon product page to determine availability.
-
+        
         Checks multiple indicators since e-gift cards have different
         page structure than physical products.
         """
         soup = BeautifulSoup(html, 'html.parser')
+        page_text = soup.get_text().lower()
 
         # --- UNAVAILABLE signals (check first) ---
         # 1. Classic #availability div
@@ -72,52 +71,43 @@ class AmazonChecker:
             return False, "Currently unavailable"
 
         # --- AVAILABLE signals ---
-        # 3. "Add to Cart" button — even if disabled (gc-buy-box-disabled),
-        #    the presence means the product page is live and in stock.
-        add_to_cart = soup.find('input', {'id': 'add-to-cart-button'})
-        if add_to_cart:
+        # 3. "Add to Cart" button (physical products)
+        if soup.find('input', {'id': 'add-to-cart-button'}):
             return True, "Available (Add to Cart found)"
 
-        # 4. "Buy Now" button
-        buy_now = soup.find('input', {'id': 'buy-now-button'})
-        if buy_now:
+        # 4. "Buy Now" button (common for gift cards)
+        if soup.find('input', {'id': 'buy-now-button'}):
             return True, "Available (Buy Now found)"
 
-        # 5. Gift card buy box
+        # 5. Gift card specific: "Send e-Gift Card" or denomination selector
+        # Amazon IN gift cards use a "gc-buy-box" or similar gift card UI
         gc_buy_box = soup.find('div', id='gc-buy-box')
         if gc_buy_box:
             return True, "Available (Gift Card buy box found)"
 
-        # 6. Any submit button with relevant id
+        # 6. Check for any submit button with "add to cart" or "buy" text
         for btn in soup.find_all(['input', 'button', 'span']):
+            btn_text = btn.get_text().strip().lower() if btn.name != 'input' else (btn.get('value', '') or '').lower()
             btn_id = (btn.get('id') or '').lower()
+            btn_name = (btn.get('name') or '').lower()
+            if any(kw in btn_text for kw in ['add to cart', 'buy now', 'send e-gift']):
+                return True, f"Available ({btn_text.strip()[:30]})"
             if any(kw in btn_id for kw in ['add-to-cart', 'buy-now', 'submit.buy', 'submit.add-to-cart']):
                 return True, f"Available (button id: {btn_id[:30]})"
 
-        # 7. Gift card denomination/amount input
+        # 7. Check for gift card denomination/amount input
+        # If there's a price input or denomination selector, the card is likely available
         gc_amount = soup.find('input', {'id': 'custom-amount'}) or soup.find('input', {'name': 'gcCustomAmount'})
         if gc_amount:
             return True, "Available (gift card amount input found)"
 
-        # 8. addToCart form
+        # 8. Check for "a]ddToCart" form action (fallback)
         add_form = soup.find('form', {'id': 'addToCart'})
         if add_form:
             return True, "Available (addToCart form found)"
 
-        # --- DEBUG logging ---
-        page_text = soup.get_text().lower()
-        logger.info(
-            f"Amazon page debug: "
-            f"avail_div={'yes' if avail_div else 'no'}, "
-            f"has_unavailable={'currently unavailable' in page_text}, "
-            f"has_add_to_cart={'add to cart' in page_text}, "
-            f"has_buy_now={'buy now' in page_text}, "
-            f"has_gift_card={'gift card' in page_text or 'e-gift' in page_text}, "
-            f"page_length={len(str(soup))}"
-        )
-
-        # Very short page = likely CAPTCHA
-        if len(str(soup)) < 5000:
+        # If page is very short, it's likely a CAPTCHA or bot-detection page
+        if len(html) < 5000:
             return False, "Could not determine (page too short — possible CAPTCHA)"
 
         return False, "Could not determine availability (no known indicators found)"
