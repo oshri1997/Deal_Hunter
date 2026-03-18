@@ -61,9 +61,9 @@ class AmazonChecker:
         if avail_div:
             avail_text = avail_div.get_text().strip().lower()
             if 'currently unavailable' in avail_text:
-                return False, "Currently unavailable (availability div)"
+                return False, "Currently unavailable"
             if 'in stock' in avail_text:
-                return True, "In Stock (availability div)"
+                return True, "In Stock"
 
         # 2. "Currently unavailable" anywhere prominent on the page
         unavail_span = soup.find(string=lambda t: t and 'currently unavailable' in t.lower())
