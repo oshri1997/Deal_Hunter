@@ -6,7 +6,7 @@ from telegram.ext import CommandHandler, ContextTypes
 
 from config import config
 from database.engine import get_session
-from database.models import Subscriber
+from database.models import Subscriber, User
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,11 @@ async def _approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         subscriber.active = True
         subscriber.approved_at = datetime.utcnow()
+
+        # Auto-enable gift card follow
+        user = await session.get(User, target_id)
+        if user:
+            user.is_following = True
 
     await context.bot.send_message(
         chat_id=target_id,
