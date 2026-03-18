@@ -177,8 +177,10 @@ def format_username(user) -> str:
 
 async def require_subscriber(update) -> bool:
     """Check subscription and send rejection message if not subscribed.
-    Returns True if the user IS a subscriber (caller should proceed).
+    Returns True if the user IS a subscriber or admin (caller should proceed).
     Returns False if not (caller should return)."""
+    if update.effective_user.id == config.ADMIN_CHAT_ID:
+        return True
     if await is_subscriber(update.effective_user.id):
         return True
     await update.message.reply_text(
