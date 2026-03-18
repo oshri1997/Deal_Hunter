@@ -14,7 +14,7 @@ from engagement import send_engagement_message
 from config import config
 from database.engine import get_session
 from database.models import User
-from bot.helpers import is_subscriber
+from bot.helpers import get_active_subscriber_ids
 
 logger = logging.getLogger(__name__)
 
@@ -181,10 +181,11 @@ class DealScheduler:
                 async with get_session() as session:
                     result = await session.execute(select(User).where(User.is_following == True))
                     followers = result.scalars().all()
+                subscriber_ids = await get_active_subscriber_ids()
                 for follower in followers:
                     if follower.id == config.ADMIN_USER_ID:
                         continue
-                    if not await is_subscriber(follower.id):
+                    if follower.id not in subscriber_ids:
                         continue
                     try:
                         await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")

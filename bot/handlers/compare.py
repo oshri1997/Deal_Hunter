@@ -6,7 +6,7 @@ from telegram.ext import CommandHandler, ContextTypes
 
 from urllib.parse import quote
 
-from bot.helpers import get_or_create_user, _escape_md, smart_search_games, format_price_ils, is_subscriber
+from bot.helpers import get_or_create_user, _escape_md, smart_search_games, format_price_ils, require_subscriber
 from config import config
 from database.engine import get_session
 from database.models import ActiveDeal, Game
@@ -19,11 +19,7 @@ async def _compare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await get_or_create_user(user)
 
-    if not await is_subscriber(user.id):
-        await update.message.reply_text(
-            "🔒 Price comparison is for subscribers only.\n"
-            "Use /subscribe to get started."
-        )
+    if not await require_subscriber(update):
         return
 
     if not context.args:

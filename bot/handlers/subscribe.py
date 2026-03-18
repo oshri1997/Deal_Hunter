@@ -4,6 +4,7 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
+from bot.helpers import format_username
 from config import config
 from database.engine import get_session
 from database.models import Subscriber, User
@@ -48,11 +49,10 @@ async def _paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Got it! You'll be approved shortly.")
 
-    username_str = f"@{user.username}" if user.username else "No username"
     admin_text = (
         "New payment request:\n"
         f"Name: {user.full_name or 'No name'}\n"
-        f"Username: {username_str}\n"
+        f"Username: {format_username(user)}\n"
         f"User ID: {user.id}\n"
         f"Run: /approve {user.id} to activate"
     )
@@ -201,14 +201,12 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # Notify admin
-    username = update.effective_user.username
-    full_name = update.effective_user.full_name
-    username_str = f"@{username}" if username else "No username"
+    user = update.effective_user
     await context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
         text=f"⚠️ Subscription cancelled:\n"
-             f"Name: {full_name or 'No name'}\n"
-             f"Username: {username_str}\n"
+             f"Name: {user.full_name or 'No name'}\n"
+             f"Username: {format_username(user)}\n"
              f"User ID: {user_id}",
     )
 

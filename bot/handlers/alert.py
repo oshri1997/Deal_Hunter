@@ -1,10 +1,10 @@
 import logging
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user, get_user_regions, _escape_md, smart_search_games, is_subscriber
+from bot.helpers import get_or_create_user, get_user_regions, _escape_md, smart_search_games, require_subscriber
 from config import config
 from database.engine import get_session
 from database.models import Game, PriceAlert
@@ -17,11 +17,7 @@ async def _alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await get_or_create_user(user)
 
-    if not await is_subscriber(user.id):
-        await update.message.reply_text(
-            "🔒 Price alerts are for subscribers only.\n"
-            "Use /subscribe to get started."
-        )
+    if not await require_subscriber(update):
         return
 
     if not context.args or len(context.args) < 2:

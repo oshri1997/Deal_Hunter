@@ -155,6 +155,39 @@ async def is_subscriber(user_id: int) -> bool:
         return result is not None and result.active
 
 
+async def get_active_subscriber_ids() -> set[int]:
+    """Return set of all active subscriber user IDs. Use for batch checks."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(Subscriber.telegram_user_id).where(Subscriber.active == True)
+        )
+        return {row[0] for row in result.all()}
+
+
+def format_username(user) -> str:
+    """Format a Telegram user's display name, handling None username."""
+    if user.username:
+        return f"@{user.username}"
+    if hasattr(user, "full_name") and user.full_name:
+        return user.full_name
+    if hasattr(user, "first_name") and user.first_name:
+        return user.first_name
+    return "No username"
+
+
+async def require_subscriber(update) -> bool:
+    """Check subscription and send rejection message if not subscribed.
+    Returns True if the user IS a subscriber (caller should proceed).
+    Returns False if not (caller should return)."""
+    if await is_subscriber(update.effective_user.id):
+        return True
+    await update.message.reply_text(
+        "🔒 This feature is for subscribers only.\n"
+        "Use /subscribe to get started."
+    )
+    return False
+
+
 async def format_price_ils(price: float, currency: str) -> str:
     """Return ILS equivalent suffix for non-ILS currencies.
 

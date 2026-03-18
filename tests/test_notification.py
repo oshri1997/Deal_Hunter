@@ -173,7 +173,7 @@ class TestNotifyNewDeals:
 
         with patch("notification.get_session", return_value=ctx), \
              patch("notification.ExchangeRateService.convert_to_ils", new_callable=AsyncMock, return_value=70.0), \
-             patch("notification.is_subscriber", new_callable=AsyncMock, return_value=True):
+             patch("notification.get_active_subscriber_ids", new_callable=AsyncMock, return_value={100}):
             await engine.notify_new_deals([deal])
 
         bot.send_message.assert_awaited_once()
@@ -213,7 +213,7 @@ class TestNotifyNewDeals:
 
         with patch("notification.get_session", return_value=ctx), \
              patch("notification.ExchangeRateService.convert_to_ils", new_callable=AsyncMock, return_value=70.0), \
-             patch("notification.is_subscriber", new_callable=AsyncMock, return_value=True):
+             patch("notification.get_active_subscriber_ids", new_callable=AsyncMock, return_value={100}):
             await engine.notify_new_deals([deal])
 
         # Should be called exactly once (not twice)
