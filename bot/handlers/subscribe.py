@@ -42,13 +42,17 @@ async def _paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif existing.active:
             await update.message.reply_text("✅ You already have an active subscription!")
             return
+        else:
+            await update.message.reply_text("⏳ Your payment is already pending approval.")
+            return
 
     await update.message.reply_text("Got it! You'll be approved shortly.")
 
+    username_str = f"@{user.username}" if user.username else "No username"
     admin_text = (
         "New payment request:\n"
-        f"Name: {user.full_name}\n"
-        f"Username: @{user.username}\n"
+        f"Name: {user.full_name or 'No name'}\n"
+        f"Username: {username_str}\n"
         f"User ID: {user.id}\n"
         f"Run: /approve {user.id} to activate"
     )
@@ -147,7 +151,8 @@ async def _subscribers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = [f"Active subscribers ({len(active)}):"]
     for sub in active:
         since = sub.approved_at.strftime("%Y-%m-%d") if sub.approved_at else "N/A"
-        lines.append(f"- @{sub.username} | {sub.telegram_user_id} | since {since}")
+        name = f"@{sub.username}" if sub.username else sub.full_name or str(sub.telegram_user_id)
+        lines.append(f"- {name} | {sub.telegram_user_id} | since {since}")
 
     await update.message.reply_text("\n".join(lines))
 
@@ -198,11 +203,12 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Notify admin
     username = update.effective_user.username
     full_name = update.effective_user.full_name
+    username_str = f"@{username}" if username else "No username"
     await context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
         text=f"⚠️ Subscription cancelled:\n"
-             f"Name: {full_name}\n"
-             f"Username: @{username}\n"
+             f"Name: {full_name or 'No name'}\n"
+             f"Username: {username_str}\n"
              f"User ID: {user_id}",
     )
 
@@ -213,4 +219,4 @@ approve_handler = CommandHandler("approve", _approve)
 revoke_handler = CommandHandler("revoke", _revoke)
 subscribers_handler = CommandHandler("subscribers", _subscribers)
 status_handler = CommandHandler("status", _status)
-cancel_handler = CommandHandler("cancel", _cancel)
+cancel_handler = CommandHandler("unsubscribe", _cancel)
