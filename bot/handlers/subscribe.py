@@ -167,9 +167,47 @@ async def _status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /cancel — user cancels their own subscription."""
+    user_id = update.effective_user.id
+
+    async with get_session() as session:
+        subscriber = await session.get(Subscriber, user_id)
+        if not subscriber or not subscriber.active:
+            await update.message.reply_text(
+                "❌ You don't have an active subscription."
+            )
+            return
+
+        subscriber.active = False
+
+        # Remove premium and follow
+        user = await session.get(User, user_id)
+        if user:
+            user.is_premium = False
+            user.is_following = False
+
+    await update.message.reply_text(
+        "Your subscription has been cancelled.\n"
+        "Use /subscribe if you'd like to rejoin."
+    )
+
+    # Notify admin
+    username = update.effective_user.username
+    full_name = update.effective_user.full_name
+    await context.bot.send_message(
+        chat_id=ADMIN_CHAT_ID,
+        text=f"⚠️ Subscription cancelled:\n"
+             f"Name: {full_name}\n"
+             f"Username: @{username}\n"
+             f"User ID: {user_id}",
+    )
+
+
 subscribe_handler = CommandHandler("subscribe", _subscribe)
 paid_handler = CommandHandler("paid", _paid)
 approve_handler = CommandHandler("approve", _approve)
 revoke_handler = CommandHandler("revoke", _revoke)
 subscribers_handler = CommandHandler("subscribers", _subscribers)
 status_handler = CommandHandler("status", _status)
+cancel_handler = CommandHandler("cancel", _cancel)

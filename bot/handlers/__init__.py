@@ -17,6 +17,7 @@ from bot.handlers.subscribe import (
     revoke_handler,
     subscribers_handler,
     status_handler,
+    cancel_handler,
 )
 
 __all__ = [
@@ -54,4 +55,5 @@ __all__ = [
     "revoke_handler",
     "subscribers_handler",
     "status_handler",
+    "cancel_handler",
 ]

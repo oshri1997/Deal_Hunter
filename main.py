@@ -39,6 +39,7 @@ from bot.handlers import (
     revoke_handler,
     subscribers_handler,
     status_handler,
+    cancel_handler,
 )
 
 # Configure logging
@@ -120,6 +121,7 @@ def main():
     application.add_handler(revoke_handler)
     application.add_handler(subscribers_handler)
     application.add_handler(status_handler)
+    application.add_handler(cancel_handler)
 
     logger.info("🚀 PS5 Deal Hunter Bot starting...")
     logger.info(f"Daily scrape scheduled at 02:00")
