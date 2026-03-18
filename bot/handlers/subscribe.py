@@ -78,10 +78,12 @@ async def _approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subscriber.active = True
         subscriber.approved_at = datetime.utcnow()
 
-        # Auto-enable gift card follow
+        # Auto-enable gift card follow and premium
         user = await session.get(User, target_id)
         if user:
             user.is_following = True
+            user.is_premium = True
+            user.premium_expires_at = None
 
     await context.bot.send_message(
         chat_id=target_id,
@@ -111,6 +113,12 @@ async def _revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ User not found")
             return
         subscriber.active = False
+
+        # Remove premium and follow
+        user = await session.get(User, target_id)
+        if user:
+            user.is_premium = False
+            user.is_following = False
 
     await context.bot.send_message(
         chat_id=target_id,
