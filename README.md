@@ -1,4 +1,4 @@
-# 🎮 PS5 Deal Hunter Bot
+# 🎮 PS5 Deal Hunter Bot -HOT
 
 Multi-region PlayStation deal notifications via Telegram.
 
