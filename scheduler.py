@@ -14,6 +14,7 @@ from engagement import send_engagement_message
 from config import config
 from database.engine import get_session
 from database.models import User
+from bot.helpers import is_subscriber
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,8 @@ class DealScheduler:
                     followers = result.scalars().all()
                 for follower in followers:
                     if follower.id == config.ADMIN_USER_ID:
+                        continue
+                    if not await is_subscriber(follower.id):
                         continue
                     try:
                         await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")

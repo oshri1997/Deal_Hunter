@@ -10,7 +10,7 @@ from telegram.error import TelegramError
 from database.engine import get_session
 from database.models import User, UserRegion, UserWishlist, ActiveDeal, Game, PriceAlert
 from config import config
-from bot.helpers import _words_match
+from bot.helpers import _words_match, is_subscriber
 from services.exchange_rates import ExchangeRateService
 
 logger = logging.getLogger(__name__)
@@ -193,6 +193,8 @@ class NotificationEngine:
 
     async def _send_deal_notification(self, user: User, deal: ActiveDeal, game: Game, is_wishlist: bool):
         """Send individual deal notification with store links"""
+        if not await is_subscriber(user.id):
+            return
         region_info = config.REGIONS.get(deal.region_code, {})
         flag = region_info.get("flag", "")
         currency = region_info.get("currency", "USD")
@@ -226,6 +228,8 @@ class NotificationEngine:
 
     async def _send_price_alert(self, user: User, game: Game, deal: ActiveDeal, trigger_reason: str):
         """Send price alert notification"""
+        if not await is_subscriber(user.id):
+            return
         region_info = config.REGIONS.get(deal.region_code, {})
         flag = region_info.get("flag", "")
         currency = region_info.get("currency_symbol", "")

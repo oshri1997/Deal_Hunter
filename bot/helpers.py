@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from config import config
 from database.engine import get_session
-from database.models import Game, User, UserRegion
+from database.models import Game, Subscriber, User, UserRegion
 from services.exchange_rates import ExchangeRateService
 
 
@@ -147,6 +147,13 @@ async def smart_search_games(session, query: str, limit: int = 10) -> list[Game]
 
 
 # --- Dual-Currency (ILS) ---
+
+async def is_subscriber(user_id: int) -> bool:
+    """Check if a user has an active subscription. Returns True only if active=TRUE."""
+    async with get_session() as session:
+        result = await session.get(Subscriber, user_id)
+        return result is not None and result.active
+
 
 async def format_price_ils(price: float, currency: str) -> str:
     """Return ILS equivalent suffix for non-ILS currencies.

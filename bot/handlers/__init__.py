@@ -10,6 +10,14 @@ from bot.handlers.search import search_handler
 from bot.handlers.donate import donate_handler, support_handler
 from bot.handlers.alert import alert_handler, alerts_handler, delalert_handler
 from bot.handlers.follow import follow_handler
+from bot.handlers.subscribe import (
+    subscribe_handler,
+    paid_handler,
+    approve_handler,
+    revoke_handler,
+    subscribers_handler,
+    status_handler,
+)
 
 __all__ = [
     "start_handler",
@@ -40,4 +48,10 @@ __all__ = [
     "alerts_handler",
     "delalert_handler",
     "follow_handler",
+    "subscribe_handler",
+    "paid_handler",
+    "approve_handler",
+    "revoke_handler",
+    "subscribers_handler",
+    "status_handler",
 ]

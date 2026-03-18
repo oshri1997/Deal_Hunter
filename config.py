@@ -28,6 +28,10 @@ class Config:
     # Notification
     MAX_DEALS_PER_NOTIFICATION: int = 10
 
+    # Subscription
+    ADMIN_CHAT_ID: int = int(os.getenv("ADMIN_CHAT_ID", "680723948"))
+    BMC_URL: str = os.getenv("BMC_URL", "https://buymeacoffee.com/oshri1997")
+
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 

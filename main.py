@@ -33,6 +33,12 @@ from bot.handlers import (
     alerts_handler,
     delalert_handler,
     follow_handler,
+    subscribe_handler,
+    paid_handler,
+    approve_handler,
+    revoke_handler,
+    subscribers_handler,
+    status_handler,
 )
 
 # Configure logging
@@ -108,6 +114,12 @@ def main():
     application.add_handler(alerts_handler)
     application.add_handler(delalert_handler)
     application.add_handler(follow_handler)
+    application.add_handler(subscribe_handler)
+    application.add_handler(paid_handler)
+    application.add_handler(approve_handler)
+    application.add_handler(revoke_handler)
+    application.add_handler(subscribers_handler)
+    application.add_handler(status_handler)
 
     logger.info("🚀 PS5 Deal Hunter Bot starting...")
     logger.info(f"Daily scrape scheduled at 02:00")

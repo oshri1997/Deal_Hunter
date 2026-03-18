@@ -49,6 +49,17 @@ async def init_db():
         await conn.execute(text(
             "ALTER TABLE active_deals ADD COLUMN IF NOT EXISTS pending_notification BOOLEAN NOT NULL DEFAULT FALSE"
         ))
+        # Create subscribers table for paywall system
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS subscribers ("
+            "  telegram_user_id BIGINT PRIMARY KEY,"
+            "  username TEXT,"
+            "  full_name TEXT,"
+            "  requested_at TIMESTAMP DEFAULT NOW(),"
+            "  approved_at TIMESTAMP,"
+            "  active BOOLEAN DEFAULT FALSE"
+            ")"
+        ))
     logger.info("Database tables created successfully")
 
 

@@ -112,6 +112,17 @@ class ActiveDeal(Base):
     )
 
 
+class Subscriber(Base):
+    __tablename__ = "subscribers"
+
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    username: Mapped[str | None] = mapped_column(Text)
+    full_name: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    active: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class PriceAlert(Base):
     __tablename__ = "price_alerts"
 
