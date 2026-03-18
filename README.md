@@ -2,7 +2,7 @@
 
 Multi-region PlayStation deal notifications via Telegram.
 
-## ✅ Project Status
+## ✅ Project Statuss
 
 All core components are implemented:
 
@@ -69,6 +69,7 @@ python main.py
 ```
 
 You should see:
+
 ```
 🚀 PS5 Deal Hunter Bot starting...
 Scraping interval: 3 hours
@@ -77,18 +78,18 @@ Supported regions: IL, IN, US, GB, DE, FR, BR, JP, AU, RU
 
 ## 📱 Bot Commands
 
-| Command | Description |
-|---------|-------------|
-| `/start` | Welcome message and setup |
-| `/help` | Show all commands |
-| `/regions` | Select regions to track (Free: 2, Premium: unlimited) |
-| `/deals` | View current deals in your regions |
-| `/watch <game>` | Add game to wishlist (Free: 5, Premium: unlimited) |
-| `/unwatch <game>` | Remove game from wishlist |
-| `/watchlist` | View your tracked games |
-| `/compare <game>` | Compare prices across regions (Premium only) |
-| `/settings` | View your preferences |
-| `/premium` | Upgrade to Premium |
+| Command           | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| `/start`          | Welcome message and setup                             |
+| `/help`           | Show all commands                                     |
+| `/regions`        | Select regions to track (Free: 2, Premium: unlimited) |
+| `/deals`          | View current deals in your regions                    |
+| `/watch <game>`   | Add game to wishlist (Free: 5, Premium: unlimited)    |
+| `/unwatch <game>` | Remove game from wishlist                             |
+| `/watchlist`      | View your tracked games                               |
+| `/compare <game>` | Compare prices across regions (Premium only)          |
+| `/settings`       | View your preferences                                 |
+| `/premium`        | Upgrade to Premium                                    |
 
 ## 🏗️ Project Structure
 
@@ -150,12 +151,14 @@ Edit `config.py` to customize:
 ## 🎯 Next Steps
 
 ### Essential
+
 - [ ] Test with real Telegram bot
 - [ ] Verify database connections
 - [ ] Test scraping for all regions
 - [ ] Validate notification delivery
 
 ### Optional Enhancements
+
 - [ ] Integrate Stripe for payments
 - [ ] Add price history charts (matplotlib)
 - [ ] Implement Redis caching
@@ -166,16 +169,19 @@ Edit `config.py` to customize:
 ## 🐛 Troubleshooting
 
 **Bot doesn't start:**
+
 - Check `TELEGRAM_BOT_TOKEN` is set correctly
 - Verify PostgreSQL is running
 - Check logs for errors
 
 **No deals appearing:**
+
 - Wait for first scraping cycle (check `SCRAPE_INTERVAL_HOURS`)
 - Verify PSPrices.com is accessible
 - Check scraper logs
 
 **Database errors:**
+
 - Ensure PostgreSQL is running
 - Verify `DATABASE_URL` format
 - Check database permissions
