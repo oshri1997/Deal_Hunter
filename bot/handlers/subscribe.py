@@ -188,7 +188,10 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user.is_following = False
 
     await update.message.reply_text(
-        "Your subscription has been cancelled.\n"
+        "Your subscription has been cancelled.\n\n"
+        "⚠️ To stop future payments, also cancel on Buy Me a Coffee:\n"
+        f"{BMC_URL}\n"
+        "Go to your account → Manage Memberships → Cancel\n\n"
         "Use /subscribe if you'd like to rejoin."
     )
 

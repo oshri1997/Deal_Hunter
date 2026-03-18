@@ -3,17 +3,21 @@ from telegram.ext import CommandHandler, ContextTypes
 
 
 async def _premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show premium info - currently all features are free during beta."""
+    """Show premium/subscription info."""
     await update.message.reply_text(
-        "🎉 All Features Are Free!\n\n"
-        "During our beta period, every feature is available to all users:\n"
-        "• ✅ Unlimited regions\n"
-        "• ✅ Real-time instant alerts\n"
-        "• ✅ Unlimited wishlist\n"
-        "• ✅ Cross-region price comparison\n"
-        "• ✅ Price alerts for specific games\n\n"
-        "Premium plans with exclusive features are coming soon!\n\n"
-        "💝 Want to support the bot? Use /donate"
+        "🔔 <b>PS Deal Hunter — Premium</b>\n\n"
+        "Subscribers get:\n"
+        "• ✅ Real-time deal alerts\n"
+        "• ✅ Price drop notifications\n"
+        "• ✅ Gift card stock alerts (/follow)\n"
+        "• ✅ Unlimited wishlist &amp; regions\n"
+        "• ✅ Cross-region price comparison\n\n"
+        "Free features (no subscription needed):\n"
+        "• 🔍 Search, browse deals, compare prices\n"
+        "• 📋 Wishlist &amp; price alerts setup\n\n"
+        "Use /subscribe to get started!\n"
+        "Use /status to check your subscription.",
+        parse_mode="HTML",
     )
 
 
