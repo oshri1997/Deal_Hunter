@@ -33,10 +33,6 @@ async def _paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with get_session() as session:
         existing = await session.get(Subscriber, user.id)
-        if existing and existing.active:
-            await update.message.reply_text("✅ You already have an active subscription!")
-            return
-
         if not existing:
             subscriber = Subscriber(
                 telegram_user_id=user.id,
@@ -44,21 +40,23 @@ async def _paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 full_name=user.full_name,
             )
             session.add(subscriber)
+        elif existing.active:
+            await update.message.reply_text("✅ You already have an active subscription!")
+            return
+        else:
+            await update.message.reply_text("⏳ Your payment is already pending approval.")
+            return
 
     await update.message.reply_text("Got it! You'll be approved shortly.")
 
-    # Always notify admin
     admin_text = (
-        "💰 New payment request:\n\n"
+        "New payment request:\n"
         f"Name: {user.full_name or 'No name'}\n"
         f"Username: {format_username(user)}\n"
-        f"User ID: {user.id}\n\n"
+        f"User ID: {user.id}\n"
         f"Run: /approve {user.id} to activate"
     )
-    try:
-        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
-    except Exception as e:
-        logger.error(f"Failed to notify admin about payment request: {e}")
+    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
 
 
 async def _approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,7 +116,7 @@ async def _revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not subscriber:
             await update.message.reply_text(f"❌ User not found")
             return
-        await session.delete(subscriber)
+        subscriber.active = False
 
         # Remove premium and follow
         user = await session.get(User, target_id)
@@ -186,8 +184,7 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Delete subscriber row entirely so /paid works cleanly next time
-        await session.delete(subscriber)
+        subscriber.active = False
 
         # Remove premium and follow
         user = await session.get(User, user_id)
