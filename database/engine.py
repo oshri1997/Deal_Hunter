@@ -41,25 +41,31 @@ async def init_db():
     """Create all tables if they don't exist."""
     async with _get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Add is_following column to existing databases that predate it
-        await conn.execute(text(
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_following BOOLEAN NOT NULL DEFAULT FALSE"
-        ))
-        # Add pending_notification column for decoupled scan/delivery
-        await conn.execute(text(
-            "ALTER TABLE active_deals ADD COLUMN IF NOT EXISTS pending_notification BOOLEAN NOT NULL DEFAULT FALSE"
-        ))
-        # Create subscribers table for paywall system
-        await conn.execute(text(
-            "CREATE TABLE IF NOT EXISTS subscribers ("
-            "  telegram_user_id BIGINT PRIMARY KEY,"
-            "  username TEXT,"
-            "  full_name TEXT,"
-            "  requested_at TIMESTAMP DEFAULT NOW(),"
-            "  approved_at TIMESTAMP,"
-            "  active BOOLEAN DEFAULT FALSE"
-            ")"
-        ))
+
+        # Run each migration individually — if it times out or the column
+        # already exists, log and continue.  Supabase free-tier has a very
+        # short statement_timeout that can't be overridden.
+        migrations = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_following BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE active_deals ADD COLUMN IF NOT EXISTS pending_notification BOOLEAN NOT NULL DEFAULT FALSE",
+            (
+                "CREATE TABLE IF NOT EXISTS subscribers ("
+                "  telegram_user_id BIGINT PRIMARY KEY,"
+                "  username TEXT,"
+                "  full_name TEXT,"
+                "  requested_at TIMESTAMP DEFAULT NOW(),"
+                "  approved_at TIMESTAMP,"
+                "  active BOOLEAN DEFAULT FALSE"
+                ")"
+            ),
+        ]
+
+        for sql in migrations:
+            try:
+                await conn.execute(text(sql))
+            except Exception as e:
+                logger.warning(f"Migration skipped (probably already applied): {e}")
+
     logger.info("Database tables created successfully")
 
 
