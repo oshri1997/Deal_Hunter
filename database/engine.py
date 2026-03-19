@@ -40,9 +40,6 @@ def _get_session_factory():
 async def init_db():
     """Create all tables if they don't exist."""
     async with _get_engine().begin() as conn:
-        # Increase timeout for migration statements
-        await conn.execute(text("SET statement_timeout = '30s'"))
-
         await conn.run_sync(Base.metadata.create_all)
         # Add is_following column to existing databases that predate it
         await conn.execute(text(
@@ -63,9 +60,6 @@ async def init_db():
             "  active BOOLEAN DEFAULT FALSE"
             ")"
         ))
-
-        # Reset timeout back to default
-        await conn.execute(text("SET statement_timeout = DEFAULT"))
     logger.info("Database tables created successfully")
 
 
