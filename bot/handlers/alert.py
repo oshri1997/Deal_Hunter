@@ -4,7 +4,8 @@ from sqlalchemy import select
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user, get_user_regions, _escape_md, smart_search_games, require_subscriber
+from bot.helpers import get_or_create_user, get_user_regions, get_user_language, _escape_md, smart_search_games, require_subscriber
+from bot.i18n import t
 from config import config
 from database.engine import get_session
 from database.models import Game, PriceAlert
@@ -16,27 +17,18 @@ async def _alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /alert <game> <price|discount%> — set a price alert."""
     user = update.effective_user
     await get_or_create_user(user)
+    lang = await get_user_language(user.id)
 
     if not await require_subscriber(update):
         return
 
     if not context.args or len(context.args) < 2:
-        await update.message.reply_text(
-            "ℹ️ *Usage:*\n"
-            "`/alert Game Title 100` \\- Alert when price drops below 100\n"
-            "`/alert Game Title 50%` \\- Alert when discount reaches 50%\n\n"
-            "Example:\n"
-            "`/alert God of War Ragnarok 100`\n"
-            "`/alert Elden Ring 50%`",
-            parse_mode="MarkdownV2",
-        )
+        await update.message.reply_text(t(lang, "alert_usage"), parse_mode="MarkdownV2")
         return
 
-    # Last arg is the target (price or discount%), rest is game name
     target_str = context.args[-1]
     game_query = " ".join(context.args[:-1]).strip()
 
-    # Parse target
     target_price = None
     target_discount = None
 
@@ -44,31 +36,24 @@ async def _alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             target_discount = int(target_str[:-1])
             if target_discount < 1 or target_discount > 99:
-                await update.message.reply_text("⚠️ Discount must be between 1% and 99%.")
+                await update.message.reply_text(t(lang, "alert_invalid_discount"))
                 return
         except ValueError:
-            await update.message.reply_text("⚠️ Invalid discount format. Use e.g. `50%`", parse_mode="MarkdownV2")
+            await update.message.reply_text(t(lang, "alert_invalid_discount_fmt"), parse_mode="MarkdownV2")
             return
     else:
         try:
             target_price = float(target_str)
             if target_price <= 0:
-                await update.message.reply_text("⚠️ Price must be greater than 0.")
+                await update.message.reply_text(t(lang, "alert_price_positive"))
                 return
         except ValueError:
-            await update.message.reply_text(
-                "⚠️ Invalid target\\. Use a price \\(e\\.g\\. `100`\\) or discount \\(e\\.g\\. `50%`\\)",
-                parse_mode="MarkdownV2",
-            )
+            await update.message.reply_text(t(lang, "alert_invalid_target"), parse_mode="MarkdownV2")
             return
 
-    # Get user's regions
     user_regions = await get_user_regions(user.id)
     if not user_regions:
-        await update.message.reply_text(
-            "⚠️ You haven't selected any regions yet.\n"
-            "Use /regions to choose your PSN store regions first!"
-        )
+        await update.message.reply_text(t(lang, "alert_no_regions"))
         return
 
     async with get_session() as session:
@@ -77,16 +62,13 @@ async def _alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not game:
             await update.message.reply_text(
-                f"⚠️ No game found matching *{_escape_md(game_query)}*\\.\n"
-                "Try a different search term or use /search first\\.",
+                t(lang, "alert_no_game", game=_escape_md(game_query)),
                 parse_mode="MarkdownV2",
             )
             return
 
-        # Create alerts for each of the user's regions
         created = []
         for region_code in user_regions:
-            # Check if alert already exists
             existing = await session.execute(
                 select(PriceAlert).where(
                     PriceAlert.user_id == user.id,
@@ -111,21 +93,22 @@ async def _alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not created:
         await update.message.reply_text(
-            f"ℹ️ You already have active alerts for *{_escape_md(game.title)}* in all your regions\\.",
+            t(lang, "alert_already_set", game=_escape_md(game.title)),
             parse_mode="MarkdownV2",
         )
         return
 
-    # Format the response
-    target_text = f"{target_discount}% discount" if target_discount else f"price below {target_price}"
+    if target_discount:
+        target_text = t(lang, "alert_target_discount", pct=target_discount)
+    else:
+        target_text = t(lang, "alert_target_price", price=target_price)
     regions_text = ", ".join(created)
 
     await update.message.reply_text(
-        f"🔔 *Price alert set\\!*\n\n"
-        f"🎮 {_escape_md(game.title)}\n"
-        f"🎯 Target: {_escape_md(target_text)}\n"
-        f"📍 Regions: {_escape_md(regions_text)}\n\n"
-        f"You'll be notified when the conditions are met\\!",
+        t(lang, "alert_set",
+          game=_escape_md(game.title),
+          target=_escape_md(target_text),
+          regions=_escape_md(regions_text)),
         parse_mode="MarkdownV2",
     )
 
@@ -134,6 +117,7 @@ async def _alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /alerts — list all active price alerts."""
     user = update.effective_user
     await get_or_create_user(user)
+    lang = await get_user_language(user.id)
 
     async with get_session() as session:
         result = await session.execute(
@@ -148,31 +132,27 @@ async def _alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alerts = result.all()
 
     if not alerts:
-        await update.message.reply_text(
-            "🔔 *No active price alerts\\.*\n"
-            "Use `/alert Game Title 100` to set one\\!",
-            parse_mode="MarkdownV2",
-        )
+        await update.message.reply_text(t(lang, "alerts_none"), parse_mode="MarkdownV2")
         return
 
-    lines = ["🔔 *Your Price Alerts:*\n"]
+    lines = [t(lang, "alerts_header")]
     for i, (alert, game) in enumerate(alerts, 1):
         region_info = config.REGIONS.get(alert.region_code, {})
         flag = region_info.get("flag", "")
 
         if alert.target_price is not None:
             symbol = region_info.get("currency_symbol", "$")
-            target = f"below {symbol}{alert.target_price:.2f}"
+            target = t(lang, "alerts_below", sym=symbol, price=f"{alert.target_price:.2f}")
         else:
-            target = f"{alert.target_discount}% discount"
+            target = t(lang, "alerts_discount", pct=alert.target_discount)
 
         lines.append(
             f"{i}\\. 🎮 {_escape_md(game.title)}\n"
-            f"    {flag} Target: {_escape_md(target)}"
+            f"    {flag} {_escape_md(target)}"
         )
 
-    lines.append(f"\n📊 {len(alerts)} active alert\\(s\\)")
-    lines.append("Use `/delalert <number>` to remove an alert\\.")
+    lines.append(f"\n{t(lang, 'alerts_count', n=len(alerts))}")
+    lines.append(t(lang, "alerts_tip"))
 
     await update.message.reply_text("\n".join(lines), parse_mode="MarkdownV2")
 
@@ -181,19 +161,16 @@ async def _delalert(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /delalert <number> — delete a price alert by its list number."""
     user = update.effective_user
     await get_or_create_user(user)
+    lang = await get_user_language(user.id)
 
     if not context.args:
-        await update.message.reply_text(
-            "ℹ️ *Usage:* `/delalert 1`\n"
-            "Use /alerts to see your alert numbers\\.",
-            parse_mode="MarkdownV2",
-        )
+        await update.message.reply_text(t(lang, "delalert_usage"), parse_mode="MarkdownV2")
         return
 
     try:
         alert_num = int(context.args[0])
     except ValueError:
-        await update.message.reply_text("⚠️ Please provide a valid number\\.", parse_mode="MarkdownV2")
+        await update.message.reply_text(t(lang, "delalert_invalid"), parse_mode="MarkdownV2")
         return
 
     async with get_session() as session:
@@ -210,8 +187,7 @@ async def _delalert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if alert_num < 1 or alert_num > len(alerts):
             await update.message.reply_text(
-                f"⚠️ Invalid alert number\\. You have {len(alerts)} active alerts\\.\n"
-                "Use /alerts to see the list\\.",
+                t(lang, "delalert_out_of_range", n=len(alerts)),
                 parse_mode="MarkdownV2",
             )
             return
@@ -220,7 +196,7 @@ async def _delalert(update: Update, context: ContextTypes.DEFAULT_TYPE):
         alert.is_active = False
 
     await update.message.reply_text(
-        f"❌ Removed alert for *{_escape_md(game.title)}*\\.",
+        t(lang, "delalert_removed", game=_escape_md(game.title)),
         parse_mode="MarkdownV2",
     )
 

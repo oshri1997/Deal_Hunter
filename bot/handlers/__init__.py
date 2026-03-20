@@ -1,4 +1,4 @@
-from bot.handlers.start import start_handler, help_handler
+from bot.handlers.start import start_handler, help_handler, language_handler, language_callback_handler
 from bot.handlers.regions import regions_handler, region_callback_handler
 from bot.handlers.deals import deals_handler, deals_more_handler
 from bot.handlers.wishlist import watch_handler, unwatch_handler, watchlist_handler
@@ -23,6 +23,8 @@ from bot.handlers.subscribe import (
 __all__ = [
     "start_handler",
     "help_handler",
+    "language_handler",
+    "language_callback_handler",
     "regions_handler",
     "region_callback_handler",
     "deals_handler",

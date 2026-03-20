@@ -8,7 +8,9 @@
       "WebFetch(domain:www.offgamers.com)",
       "WebFetch(domain:api.offgamers.com)",
       "WebFetch(domain:assets.offgamers.com)",
-      "Bash(PYTHONIOENCODING=utf-8 python:*)"
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "Bash(python3:*)",
+      "Bash(py -m pytest tests/ -v)"
     ]
   }
 }

@@ -11,6 +11,23 @@ from database.models import Game, Subscriber, User, UserRegion
 from services.exchange_rates import ExchangeRateService
 
 
+async def get_user_language(user_id: int) -> str:
+    """Return the user's preferred language code ('en' or 'he'). Defaults to 'en'."""
+    async with get_session() as session:
+        user = await session.get(User, user_id)
+        if user and user.language:
+            return user.language
+    return "en"
+
+
+async def set_user_language(user_id: int, language: str) -> None:
+    """Persist the user's language preference."""
+    async with get_session() as session:
+        user = await session.get(User, user_id)
+        if user:
+            user.language = language
+
+
 async def get_or_create_user(telegram_user) -> User:
     """Get existing user or create a new one from a Telegram user object."""
     async with get_session() as session:
@@ -179,14 +196,13 @@ async def require_subscriber(update) -> bool:
     """Check subscription and send rejection message if not subscribed.
     Returns True if the user IS a subscriber or admin (caller should proceed).
     Returns False if not (caller should return)."""
+    from bot.i18n import t
     if update.effective_user.id == config.ADMIN_CHAT_ID:
         return True
     if await is_subscriber(update.effective_user.id):
         return True
-    await update.message.reply_text(
-        "🔒 This feature is for subscribers only.\n"
-        "Use /subscribe to get started."
-    )
+    lang = await get_user_language(update.effective_user.id)
+    await update.message.reply_text(t(lang, "subscriber_only"))
     return False
 
 

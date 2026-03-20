@@ -28,6 +28,7 @@ class User(Base):
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
     premium_expires_at: Mapped[datetime | None] = mapped_column(DateTime)
     is_following: Mapped[bool] = mapped_column(Boolean, default=False)
+    language: Mapped[str | None] = mapped_column(String(2))  # 'en' or 'he'
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     regions: Mapped[list["UserRegion"]] = relationship(back_populates="user", cascade="all, delete-orphan")

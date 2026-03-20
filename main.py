@@ -7,6 +7,8 @@ from config import config
 from bot.handlers import (
     start_handler,
     help_handler,
+    language_handler,
+    language_callback_handler,
     regions_handler,
     region_callback_handler,
     deals_handler,
@@ -89,6 +91,8 @@ def main():
     logger.info("Registering handlers...")
     application.add_handler(start_handler)
     application.add_handler(help_handler)
+    application.add_handler(language_handler)
+    application.add_handler(language_callback_handler)
     application.add_handler(regions_handler)
     application.add_handler(region_callback_handler)
     application.add_handler(deals_handler)

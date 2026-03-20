@@ -4,7 +4,8 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.helpers import format_username
+from bot.helpers import format_username, get_user_language
+from bot.i18n import t
 from config import config
 from database.engine import get_session
 from database.models import Subscriber, User
@@ -17,12 +18,9 @@ BMC_URL = config.BMC_URL
 
 async def _subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /subscribe — explain the subscription and show payment link."""
+    lang = await get_user_language(update.effective_user.id)
     await update.message.reply_text(
-        "🎮 <b>PS Deal Hunter — Premium Alerts</b>\n\n"
-        "Get real-time deal alerts, price drop notifications, "
-        "and gift card stock alerts delivered straight to your chat.\n\n"
-        f"☕ Subscribe here: {BMC_URL}\n\n"
-        "After paying, run /paid to let us know!",
+        t(lang, "subscribe_msg", url=BMC_URL),
         parse_mode="HTML",
     )
 
@@ -30,6 +28,7 @@ async def _subscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /paid — record payment request and notify admin."""
     user = update.effective_user
+    lang = await get_user_language(user.id)
 
     async with get_session() as session:
         existing = await session.get(Subscriber, user.id)
@@ -41,13 +40,13 @@ async def _paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             session.add(subscriber)
         elif existing.active:
-            await update.message.reply_text("✅ You already have an active subscription!")
+            await update.message.reply_text(t(lang, "subscribe_already_active"))
             return
         else:
-            await update.message.reply_text("⏳ Your payment is already pending approval.")
+            await update.message.reply_text(t(lang, "subscribe_pending"))
             return
 
-    await update.message.reply_text("Got it! You'll be approved shortly.")
+    await update.message.reply_text(t(lang, "subscribe_got_it"))
 
     admin_text = (
         "New payment request:\n"
@@ -77,21 +76,22 @@ async def _approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with get_session() as session:
         subscriber = await session.get(Subscriber, target_id)
         if not subscriber:
-            await update.message.reply_text(f"❌ User not found")
+            await update.message.reply_text("❌ User not found")
             return
         subscriber.active = True
         subscriber.approved_at = datetime.utcnow()
 
-        # Auto-enable gift card follow and premium
         user = await session.get(User, target_id)
         if user:
             user.is_following = True
             user.is_premium = True
             user.premium_expires_at = None
 
+    # Notify in the target user's language
+    target_lang = await get_user_language(target_id)
     await context.bot.send_message(
         chat_id=target_id,
-        text="You're now a subscriber! Alerts are active. 🎉",
+        text=t(target_lang, "subscribe_approved_msg"),
     )
     await update.message.reply_text(f"✅ Approved {target_id}")
 
@@ -114,19 +114,19 @@ async def _revoke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with get_session() as session:
         subscriber = await session.get(Subscriber, target_id)
         if not subscriber:
-            await update.message.reply_text(f"❌ User not found")
+            await update.message.reply_text("❌ User not found")
             return
         subscriber.active = False
 
-        # Remove premium and follow
         user = await session.get(User, target_id)
         if user:
             user.is_premium = False
             user.is_following = False
 
+    target_lang = await get_user_language(target_id)
     await context.bot.send_message(
         chat_id=target_id,
-        text="Your subscription has ended.",
+        text=t(target_lang, "subscribe_revoked_msg"),
     )
     await update.message.reply_text(f"✅ Revoked {target_id}")
 
@@ -160,54 +160,46 @@ async def _subscribers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /status — check own subscription status."""
     user_id = update.effective_user.id
+    lang = await get_user_language(user_id)
 
     async with get_session() as session:
         subscriber = await session.get(Subscriber, user_id)
 
     if subscriber and subscriber.active:
-        await update.message.reply_text("✅ Your subscription is active.")
+        await update.message.reply_text(t(lang, "subscribe_active"))
     else:
-        await update.message.reply_text(
-            "❌ You don't have an active subscription. Use /subscribe to get started."
-        )
+        await update.message.reply_text(t(lang, "subscribe_not_active"))
 
 
 async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /cancel — user cancels their own subscription."""
+    """Handle /unsubscribe — user cancels their own subscription."""
     user_id = update.effective_user.id
+    lang = await get_user_language(user_id)
 
     async with get_session() as session:
         subscriber = await session.get(Subscriber, user_id)
         if not subscriber or not subscriber.active:
-            await update.message.reply_text(
-                "❌ You don't have an active subscription."
-            )
+            await update.message.reply_text(t(lang, "subscribe_not_active_cancel"))
             return
 
         subscriber.active = False
 
-        # Remove premium and follow
         user = await session.get(User, user_id)
         if user:
             user.is_premium = False
             user.is_following = False
 
-    await update.message.reply_text(
-        "Your subscription has been cancelled.\n\n"
-        "⚠️ To stop future payments, also cancel on Buy Me a Coffee:\n"
-        f"{BMC_URL}\n"
-        "Go to your account → Manage Memberships → Cancel\n\n"
-        "Use /subscribe if you'd like to rejoin."
-    )
+    await update.message.reply_text(t(lang, "subscribe_cancelled", url=BMC_URL))
 
-    # Notify admin
-    user = update.effective_user
+    tg_user = update.effective_user
     await context.bot.send_message(
         chat_id=ADMIN_CHAT_ID,
-        text=f"⚠️ Subscription cancelled:\n"
-             f"Name: {user.full_name or 'No name'}\n"
-             f"Username: {format_username(user)}\n"
-             f"User ID: {user_id}",
+        text=(
+            "⚠️ Subscription cancelled:\n"
+            f"Name: {tg_user.full_name or 'No name'}\n"
+            f"Username: {format_username(tg_user)}\n"
+            f"User ID: {user_id}"
+        ),
     )
 
 

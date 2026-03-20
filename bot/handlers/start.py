@@ -1,88 +1,76 @@
 import logging
 
-from telegram import Update
-from telegram.ext import CommandHandler, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
-from bot.helpers import get_or_create_user
+from bot.helpers import get_or_create_user, get_user_language, set_user_language
+from bot.i18n import t
 
 logger = logging.getLogger(__name__)
 
-WELCOME_MSG = (
-    # ── Hebrew ──────────────────────────────────────────────
-    "🎮 <b>ברוכים הבאים ל-PS Deal Hunter!</b>\n\n"
-    "הבוט עוקב אחרי מבצעים ב-PlayStation Store ממדינות שונות ושולח התראות בזמן אמת.\n\n"
-    "<b>🚀 איך מתחילים:</b>\n"
-    "1. בחר אזורים עם /regions\n"
-    "2. צפה במבצעים עם /deals\n"
-    "3. עקוב אחרי משחקים עם /watch\n"
-    "💡 לא רוצה לקבל התראות על מבצעים? אין צורך לבחור אזור!\n\n"
-    "<b>📋 פקודות חינמיות:</b>\n"
-    "/regions – בחר אזורי PSN\n"
-    "/deals – מבצעים נוכחיים\n"
-    "/search &lt;משחק&gt; – חפש משחק\n"
-    "/watch &lt;משחק&gt; – הוסף לרשימת המשאלות\n"
-    "/unwatch &lt;שם|מספר&gt; – הסר מהרשימה\n"
-    "/watchlist – הרשימה שלך\n"
-    "/giftcard – זמינות גיפט קארד Amazon\n"
-    "/settings – הגדרות\n\n"
-    "<b>⭐ למנויים בלבד:</b>\n"
-    "/compare &lt;משחק&gt; – השוואת מחירים בין אזורים\n"
-    "/alert &lt;משחק&gt; &lt;מחיר|%&gt; – התראת מחיר\n"
-    "/alerts – ההתראות הפעילות שלך\n"
-    "/follow – עדכונים על גיפט קארד\n"
-    "+ התראות יומיות על מבצעים וירידות מחיר\n\n"
-    "<b>🔔 מנוי:</b>\n"
-    "/subscribe – הרשמה למנוי\n"
-    "/paid – דיווח על תשלום\n"
-    "/status – בדיקת סטטוס מנוי\n"
-    "/unsubscribe – ביטול מנוי\n"
-    "/donate – תמוך בפיתוח\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    # ── English ─────────────────────────────────────────────
-    "🎮 <b>Welcome to PS Deal Hunter!</b>\n\n"
-    "I track PlayStation Store deals across multiple regions and send real-time notifications.\n\n"
-    "<b>🚀 Getting started:</b>\n"
-    "1. Choose your regions with /regions\n"
-    "2. Browse deals with /deals\n"
-    "3. Track games with /watch\n"
-    "💡 Don't want deal alerts? No need to select a region!\n\n"
-    "<b>📋 Free commands:</b>\n"
-    "/regions – Select PSN regions\n"
-    "/deals – Current deals\n"
-    "/search &lt;game&gt; – Search for a game\n"
-    "/watch &lt;game&gt; – Add to wishlist\n"
-    "/unwatch &lt;name|number&gt; – Remove from wishlist\n"
-    "/watchlist – Your tracked games\n"
-    "/giftcard – Check Amazon gift card availability\n"
-    "/settings – Your preferences\n\n"
-    "<b>⭐ Subscribers only:</b>\n"
-    "/compare &lt;game&gt; – Compare prices across regions\n"
-    "/alert &lt;game&gt; &lt;price|%&gt; – Set price alert\n"
-    "/alerts – Your active alerts\n"
-    "/follow – Get gift card stock alerts\n"
-    "+ Daily deal alerts &amp; price drop notifications\n\n"
-    "<b>🔔 Subscription:</b>\n"
-    "/subscribe – Subscribe for premium alerts\n"
-    "/paid – Notify us after payment\n"
-    "/status – Check your subscription status\n"
-    "/unsubscribe – Cancel your subscription\n"
-    "/donate – Support the bot\n\n"
-    "☕ <a href=\"https://buymeacoffee.com/oshri1997\">buymeacoffee.com/oshri1997</a>"
-)
+
+def _lang_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🇬🇧 English", callback_data="lang:en"),
+        InlineKeyboardButton("🇮🇱 עברית", callback_data="lang:he"),
+    ]])
 
 
 async def _start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /start command."""
+    """Handle /start — show language picker for new users, welcome for returning ones."""
     user = update.effective_user
-    await get_or_create_user(user)
+    db_user = await get_or_create_user(user)
     logger.info(f"User {user.id} ({user.username}) started the bot")
-    await update.message.reply_text(WELCOME_MSG, parse_mode="HTML")
+
+    if db_user.language:
+        # Returning user — show welcome in their language directly
+        await update.message.reply_text(t(db_user.language, "welcome"), parse_mode="HTML")
+    else:
+        # New user — ask for language
+        await update.message.reply_text(
+            t("en", "choose_language"),
+            parse_mode="HTML",
+            reply_markup=_lang_keyboard(),
+        )
 
 
 async def _help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /help command."""
-    await update.message.reply_text(WELCOME_MSG, parse_mode="HTML")
+    """Handle /help — show welcome message in user's language."""
+    lang = await get_user_language(update.effective_user.id)
+    await update.message.reply_text(t(lang, "welcome"), parse_mode="HTML")
+
+
+async def _language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /language — show language picker to change language."""
+    lang = await get_user_language(update.effective_user.id)
+    await update.message.reply_text(
+        t(lang, "choose_language"),
+        parse_mode="HTML",
+        reply_markup=_lang_keyboard(),
+    )
+
+
+async def _language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle language selection inline button."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data  # "lang:en" or "lang:he"
+    if not data.startswith("lang:"):
+        return
+
+    lang = data.split(":", 1)[1]
+    if lang not in ("en", "he"):
+        return
+
+    user_id = query.from_user.id
+    await set_user_language(user_id, lang)
+
+    # Replace the picker with the full welcome message
+    await query.edit_message_text(t(lang, "welcome"), parse_mode="HTML")
 
 
 start_handler = CommandHandler("start", _start)
 help_handler = CommandHandler("help", _help)
+language_handler = CommandHandler("language", _language)
+language_callback_handler = CallbackQueryHandler(_language_callback, pattern=r"^lang:")

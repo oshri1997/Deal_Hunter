@@ -4,14 +4,15 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
 from config import config
-from bot.helpers import get_or_create_user, get_user_regions, _escape_md
+from bot.helpers import get_or_create_user, get_user_regions, get_user_language, _escape_md
+from bot.i18n import t
 from database.engine import get_session
 from database.models import User, UserRegion
 
 logger = logging.getLogger(__name__)
 
 
-def _build_region_keyboard(selected_regions: list[str]) -> InlineKeyboardMarkup:
+def _build_region_keyboard(selected_regions: list[str], lang: str) -> InlineKeyboardMarkup:
     """Build inline keyboard with region toggle buttons."""
     buttons = []
     row = []
@@ -19,10 +20,9 @@ def _build_region_keyboard(selected_regions: list[str]) -> InlineKeyboardMarkup:
         check = "✅ " if code in selected_regions else ""
         label = f"{check}{info['flag']} {info['name']}"
         row.append(InlineKeyboardButton(label, callback_data=f"region:{code}"))
-    
-    # All 3 regions in one row
+
     buttons.append(row)
-    buttons.append([InlineKeyboardButton("✅ Done", callback_data="region:done")])
+    buttons.append([InlineKeyboardButton(t(lang, "regions_done_btn"), callback_data="region:done")])
     return InlineKeyboardMarkup(buttons)
 
 
@@ -30,13 +30,13 @@ async def _regions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /regions command — show region selection keyboard."""
     user = update.effective_user
     await get_or_create_user(user)
+    lang = await get_user_language(user.id)
     selected = await get_user_regions(user.id)
-    keyboard = _build_region_keyboard(selected)
+    keyboard = _build_region_keyboard(selected, lang)
 
-    count_text = f"Selected: {len(selected)} region(s)"
+    count_text = t(lang, "regions_count", n=len(selected))
     await update.message.reply_text(
-        f"\U0001f30d *Select your PSN store regions:*\n{_escape_md(count_text)}\n\n"
-        "Tap a region to toggle it on/off\\.",
+        t(lang, "regions_title", count=_escape_md(count_text)),
         reply_markup=keyboard,
         parse_mode="MarkdownV2",
     )
@@ -53,12 +53,13 @@ async def _region_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = data.split(":", 1)[1]
     user_id = query.from_user.id
+    lang = await get_user_language(user_id)
 
     if action == "done":
         selected = await get_user_regions(user_id)
         if not selected:
             await query.edit_message_text(
-                "\u26a0\ufe0f You haven't selected any regions\\. Use /regions to choose at least one\\.",
+                t(lang, "regions_done_none"),
                 parse_mode="MarkdownV2",
             )
         else:
@@ -68,9 +69,7 @@ async def _region_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 region_names.append(f"{info.get('flag', '')} {info.get('name', code)}")
             regions_str = ", ".join(region_names)
             await query.edit_message_text(
-                f"\u2705 *Subscribed to:* {_escape_md(regions_str)}\n\n"
-                "You'll receive deal alerts for these regions\\.\n"
-                "Use /deals to see current deals\\!",
+                t(lang, "regions_done_ok", regions=_escape_md(regions_str)),
                 parse_mode="MarkdownV2",
             )
         return
@@ -80,14 +79,12 @@ async def _region_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     async with get_session() as session:
         db_user = await session.get(User, user_id)
         if not db_user:
-            await query.edit_message_text("Please use /start first.")
+            await query.edit_message_text(t(lang, "regions_start_first"))
             return
 
-        # Check if region is already selected
         current_regions = await get_user_regions(user_id)
 
         if region_code in current_regions:
-            # Remove region
             from sqlalchemy import delete
             await session.execute(
                 delete(UserRegion).where(
@@ -97,16 +94,13 @@ async def _region_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             current_regions.remove(region_code)
         else:
-            # Add region
             session.add(UserRegion(user_id=user_id, region_code=region_code))
             current_regions.append(region_code)
 
-    # Refresh keyboard
-    keyboard = _build_region_keyboard(current_regions)
-    count_text = f"Selected: {len(current_regions)} region(s)"
+    keyboard = _build_region_keyboard(current_regions, lang)
+    count_text = t(lang, "regions_count", n=len(current_regions))
     await query.edit_message_text(
-        f"\U0001f30d *Select your PSN store regions:*\n{_escape_md(count_text)}\n\n"
-        "Tap a region to toggle it on/off\\.",
+        t(lang, "regions_title", count=_escape_md(count_text)),
         reply_markup=keyboard,
         parse_mode="MarkdownV2",
     )

@@ -22,7 +22,8 @@ from telegram.ext import (
     filters,
 )
 
-from bot.helpers import smart_search_games, format_price_ils, get_or_create_user
+from bot.helpers import smart_search_games, format_price_ils, get_or_create_user, get_user_language
+from bot.i18n import t
 from config import config
 from database.engine import get_session
 from database.models import ActiveDeal, Game
@@ -40,18 +41,19 @@ WAITING_FOR_ONLINE_PICK = 1
 
 async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Search DB first, offer online fallback."""
+    user = update.effective_user
+    lang = await get_user_language(user.id)
+    context.user_data["search_lang"] = lang
+
     if not context.args:
-        await update.message.reply_text(
-            "Usage: /search <game name>\nExample: /search Spider-Man"
-        )
+        await update.message.reply_text(t(lang, "search_usage"))
         return ConversationHandler.END
 
     query = " ".join(context.args)
     context.user_data["search_query"] = query
 
-    await update.message.reply_text(f"🔍 Searching for '{query}'...")
+    await update.message.reply_text(t(lang, "search_searching", query=query))
 
-    # --- DB search ---
     _DLC_KEYWORDS = ("points", "dlc", "pack", "bundle", "currency", "coins")
 
     def _dlc_sort_key(g) -> int:
@@ -59,27 +61,22 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with get_session() as session:
         games = await smart_search_games(session, query, limit=50)
-        games = sorted(games, key=_dlc_sort_key)  # main games first
+        games = sorted(games, key=_dlc_sort_key)
 
-        # Filter out DLC / Points packs — show only main game editions by default
         main_games = [g for g in games if _dlc_sort_key(g) == 0]
         if main_games:
             games = main_games
 
         if games:
             from bot.helpers import get_user_regions
-            user_regions = await get_user_regions(update.effective_user.id) or list(config.REGIONS.keys())
-            message, flat_games = await _format_db_results(session, games, user_regions)
-            message += (
-                "\n\n📝 Reply with a <b>number</b> to see details.\n"
-                "🌐 Didn't find your game? Send <b>0</b> to search online."
-            )
+            user_regions = await get_user_regions(user.id) or list(config.REGIONS.keys())
+            message, flat_games = await _format_db_results(session, games, user_regions, lang)
+            message += t(lang, "search_reply_num")
             context.user_data["search_db_games"] = flat_games
             await update.message.reply_text(message, parse_mode="HTML")
             return WAITING_FOR_PICK
 
-    # --- No DB results → go online immediately ---
-    return await _do_online_search(update, context, query)
+    return await _do_online_search(update, context, query, lang)
 
 
 # ------------------------------------------------------------------
@@ -88,11 +85,12 @@ async def _search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_db_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user reply after DB results are shown."""
+    lang = context.user_data.get("search_lang", "en")
     db_games = context.user_data.get("search_db_games")
     query = context.user_data.get("search_query", "")
 
     if not db_games:
-        await update.message.reply_text("⚠️ Session expired. Use /search again.")
+        await update.message.reply_text(t(lang, "search_session_expired"))
         return ConversationHandler.END
 
     text = update.message.text.strip()
@@ -100,24 +98,18 @@ async def _handle_db_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         pick = int(text)
     except ValueError:
-        await update.message.reply_text(
-            "⚠️ Please reply with a number, or /cancel to stop."
-        )
+        await update.message.reply_text(t(lang, "search_invalid_pick"))
         return WAITING_FOR_PICK
 
-    # User sends 0 → online search
     if pick == 0:
-        return await _do_online_search(update, context, query)
+        return await _do_online_search(update, context, query, lang)
 
     if pick < 1 or pick > len(db_games):
-        await update.message.reply_text(
-            f"⚠️ Pick a number between 1 and {len(db_games)}, or 0 for online search."
-        )
+        await update.message.reply_text(t(lang, "search_pick_range", max=len(db_games)))
         return WAITING_FOR_PICK
 
-    # Show details for the picked game
     game_info = db_games[pick - 1]
-    await _show_game_details(update, game_info["id"], game_info["title"])
+    await _show_game_details(update, game_info["id"], game_info["title"], lang)
     _cleanup_context(context)
     return ConversationHandler.END
 
@@ -128,10 +120,11 @@ async def _handle_db_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user reply after online results are shown."""
+    lang = context.user_data.get("search_lang", "en")
     title_list = context.user_data.get("search_online_results")
 
     if not title_list:
-        await update.message.reply_text("⚠️ Session expired. Use /search again.")
+        await update.message.reply_text(t(lang, "search_session_expired"))
         return ConversationHandler.END
 
     text = update.message.text.strip()
@@ -139,19 +132,15 @@ async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         pick = int(text)
     except ValueError:
-        await update.message.reply_text(
-            "⚠️ Please reply with a number, or /cancel to stop."
-        )
+        await update.message.reply_text(t(lang, "search_invalid_pick"))
         return WAITING_FOR_ONLINE_PICK
 
     if pick < 1 or pick > len(title_list):
-        await update.message.reply_text(
-            f"⚠️ Pick a number between 1 and {len(title_list)}."
-        )
+        await update.message.reply_text(t(lang, "search_pick_range_online", max=len(title_list)))
         return WAITING_FOR_ONLINE_PICK
 
     title, platform, region_results = title_list[pick - 1]
-    message = await _format_multi_region_result(title, platform, region_results)
+    message = await _format_multi_region_result(title, platform, region_results, lang)
     await update.message.reply_text(message, parse_mode="HTML")
     _cleanup_context(context)
     return ConversationHandler.END
@@ -161,9 +150,14 @@ async def _handle_online_pick(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Online search logic
 # ------------------------------------------------------------------
 
-async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+async def _do_online_search(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    query: str,
+    lang: str = "en",
+):
     """Scrape PSPrices, save to DB, show results grouped by title."""
-    await update.message.reply_text("🌐 Searching online...")
+    await update.message.reply_text(t(lang, "search_online"))
 
     try:
         from scraper.psprices_search import PSPricesOnlineSearch
@@ -173,10 +167,6 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if not user_regions:
             user_regions = list(config.REGIONS.keys())
 
-        # ── Borrow CF cookies from the live PSPricesScraper session ───
-        # The daily scraper already has valid Cloudflare cookies.
-        # Seeding them into the search session avoids warm-up entirely
-        # on the first attempt, which is why "Warm-up failed" was common.
         shared_cookies: dict = {}
         scheduler = context.bot_data.get("scheduler")
         if scheduler:
@@ -189,26 +179,21 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 )
 
         searcher = PSPricesOnlineSearch(shared_cookies=shared_cookies)
-        # Get all results across all user regions (no dedup)
         results = await searcher.search(query, region_codes=user_regions)
     except Exception as e:
         logger.error(f"Online search failed: {e}", exc_info=True)
-        await update.message.reply_text("❌ Online search failed. Try again later.")
+        await update.message.reply_text(t(lang, "search_online_failed"))
         _cleanup_context(context)
         return ConversationHandler.END
 
     if not results:
-        await update.message.reply_text(
-            f"❌ No games found matching '{query}' on PSPrices either."
-        )
+        await update.message.reply_text(t(lang, "search_no_results", query=query))
         _cleanup_context(context)
         return ConversationHandler.END
 
-    # Save all results to DB
     saved_count = await _save_results_to_db(results)
     logger.info(f"Saved {saved_count} new games to DB from online search")
 
-    # Group by normalized title: {norm_title: [SearchResult, ...]}
     grouped: dict[str, list] = {}
     order: list[str] = []
     for r in results:
@@ -218,22 +203,19 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             order.append(norm)
         grouped[norm].append(r)
 
-    # Build indexed list: [(display_title, platform, [SearchResult, ...])]
     title_list = [
         (grouped[n][0].title, grouped[n][0].platform or "", grouped[n])
         for n in order
     ]
 
-    # Single unique title → show directly
     if len(title_list) == 1:
         title, platform, region_results = title_list[0]
-        message = await _format_multi_region_result(title, platform, region_results)
+        message = await _format_multi_region_result(title, platform, region_results, lang)
         await update.message.reply_text(message, parse_mode="HTML")
         _cleanup_context(context)
         return ConversationHandler.END
 
-    # Multiple titles → show numbered list with best deal indicator
-    lines = [f"🌐 Found {len(title_list)} games on PSPrices:\n"]
+    lines = [t(lang, "search_online_found", n=len(title_list))]
     for i, (title, platform, region_results) in enumerate(title_list, 1):
         plat = f" [{platform}]" if platform else ""
         best_discount = max(
@@ -243,7 +225,7 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         deal_info = f" — 🔥 -{best_discount}%" if best_discount else ""
         lines.append(f"<b>{i}.</b> {title}{plat}{deal_info}")
 
-    lines.append("\n📝 Reply with a <b>number</b> to see details, or /cancel to stop.")
+    lines.append(t(lang, "search_online_pick"))
 
     context.user_data["search_online_results"] = title_list
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -256,8 +238,9 @@ async def _do_online_search(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /cancel during search."""
+    lang = context.user_data.get("search_lang", "en")
     _cleanup_context(context)
-    await update.message.reply_text("🔍 Search cancelled.")
+    await update.message.reply_text(t(lang, "search_cancelled"))
     return ConversationHandler.END
 
 
@@ -267,28 +250,19 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def _cleanup_context(context: ContextTypes.DEFAULT_TYPE):
     """Remove search-related data from user_data."""
-    for key in ("search_query", "search_db_games", "search_online_results"):
+    for key in ("search_query", "search_db_games", "search_online_results", "search_lang"):
         context.user_data.pop(key, None)
 
 
 async def _format_db_results(
-    session, games: list[Game], user_regions: list[str] | None = None
+    session, games: list[Game], user_regions: list[str] | None = None, lang: str = "en"
 ) -> tuple[str, list[dict]]:
-    """Format games grouped by region with prices.
-
-    Returns (formatted_message, flat_games_in_display_order) so the caller
-    can store the ordered list for pick-by-number.
-
-    Builds the message incrementally so we never truncate mid-HTML-tag
-    (which would cause Telegram BadRequest errors).
-    """
-    # Telegram HTML limit is 4096 bytes; leave ~900 for the footer + safety.
+    """Format games grouped by region with prices."""
     MAX_LEN = 3100
 
-    # ── collect (game, deal) pairs per region ──────────────────────────
-    regions: dict[str, list[tuple]] = {}   # region_code → [(game, deal)]
+    regions: dict[str, list[tuple]] = {}
     no_price_games: list[Game] = []
-    seen_no_price: set[str] = set()        # avoid duplicate "no price" titles
+    seen_no_price: set[str] = set()
 
     for game in games:
         deal_result = await session.execute(
@@ -307,14 +281,13 @@ async def _format_db_results(
                 no_price_games.append(game)
                 seen_no_price.add(game.title)
 
-    # ── build message incrementally (never truncate mid-tag) ───────────
     flat_games: list[dict] = []
     lines: list[str] = []
     counter = 1
     truncated = False
 
     def _current_len() -> int:
-        return sum(len(l) + 1 for l in lines)  # +1 for each joining "\n"
+        return sum(len(l) + 1 for l in lines)
 
     for region_code, game_deals in regions.items():
         if truncated:
@@ -323,11 +296,10 @@ async def _format_db_results(
             continue
 
         region_info = config.REGIONS.get(region_code, {})
-        flag        = region_info.get("flag", "")
+        flag = region_info.get("flag", "")
         region_name = region_info.get("name", region_code)
-        store_url   = region_info.get("store_url", "")
+        store_url = region_info.get("store_url", "")
 
-        # Deals first, then non-deals; alphabetical within each group
         game_deals.sort(
             key=lambda x: (0 if (x[1].discount_percent or 0) > 0 else 1,
                            x[0].title.lower())
@@ -337,12 +309,12 @@ async def _format_db_results(
         region_lines: list[str] = [region_header]
         region_games: list[dict] = []
 
-        for game, deal in game_deals[:10]:  # max 10 per region
-            psn_link   = f"{store_url}/search/{quote(game.title)}" if store_url else ""
-            price      = float(deal.price)
-            currency   = deal.currency or "USD"
+        for game, deal in game_deals[:10]:
+            psn_link = f"{store_url}/search/{quote(game.title)}" if store_url else ""
+            price = float(deal.price)
+            currency = deal.currency or "USD"
             ils_suffix = await format_price_ils(price, currency)
-            disc       = deal.discount_percent or 0
+            disc = deal.discount_percent or 0
 
             if disc > 0:
                 price_line = (
@@ -354,14 +326,13 @@ async def _format_db_results(
                 price_line = f"💰 {deal.price} {currency}{ils_suffix}"
                 label = f"<b>{counter}.</b> {game.title}"
             else:
-                price_line = "💰 No price data"
+                price_line = t(lang, "search_no_price")
                 label = f"<b>{counter}.</b> {game.title}"
 
             entry = f"{label}\n    {price_line}"
             if psn_link:
                 entry += f"\n    🛒 <a href='{psn_link}'>PS Store</a>"
 
-            # ── overflow guard: stop BEFORE adding a partial entry ──────
             candidate_len = _current_len() + sum(len(l) + 1 for l in region_lines) + len(entry)
             if candidate_len > MAX_LEN:
                 truncated = True
@@ -371,16 +342,14 @@ async def _format_db_results(
             region_games.append({"id": game.id, "title": game.title})
             counter += 1
 
-        # Commit this region only if at least one game was added
         if region_games:
             lines.extend(region_lines)
             flat_games.extend(region_games)
 
-    # ── games with absolutely no price data ────────────────────────────
     for game in no_price_games:
         if truncated:
             break
-        entry = f"\n<b>{counter}.</b> ⚪ {game.title} — No price data"
+        entry = f"\n<b>{counter}.</b> ⚪ {game.title} — {t(lang, 'search_no_price')}"
         if _current_len() + len(entry) > MAX_LEN:
             truncated = True
             break
@@ -389,17 +358,14 @@ async def _format_db_results(
         counter += 1
 
     if truncated:
-        lines.append(
-            "\n<i>...more results available. "
-            "Send <b>0</b> to search online for all results.</i>"
-        )
+        lines.append(t(lang, "search_more"))
 
-    header = f"🎮 Found {len(flat_games)} result(s):"
+    header = t(lang, "search_found", n=len(flat_games))
     message = header + "\n".join(lines)
     return message, flat_games
 
 
-async def _show_game_details(update: Update, game_id: str, title: str):
+async def _show_game_details(update: Update, game_id: str, title: str, lang: str = "en"):
     """Show detailed info for a DB game."""
     async with get_session() as session:
         deal_result = await session.execute(
@@ -412,14 +378,14 @@ async def _show_game_details(update: Update, game_id: str, title: str):
         if deals:
             for deal in deals:
                 region_info = config.REGIONS.get(deal.region_code, {})
-                flag        = region_info.get("flag", "")
+                flag = region_info.get("flag", "")
                 region_name = region_info.get("name", deal.region_code)
-                currency    = deal.currency or region_info.get("currency", "USD")
-                store_url   = region_info.get("store_url", "")
+                currency = deal.currency or region_info.get("currency", "USD")
+                store_url = region_info.get("store_url", "")
 
                 ils_suffix = await format_price_ils(float(deal.price), currency)
-                psn_link   = f"{store_url}/search/{quote(title)}" if store_url else ""
-                disc       = deal.discount_percent or 0
+                psn_link = f"{store_url}/search/{quote(title)}" if store_url else ""
+                disc = deal.discount_percent or 0
 
                 if disc > 0:
                     price_line = (
@@ -435,14 +401,16 @@ async def _show_game_details(update: Update, game_id: str, title: str):
                     f"🛒 <a href='{psn_link}'>PS Store</a>\n"
                 )
         else:
-            lines.append("💰 No price data available.\n")
+            lines.append(t(lang, "search_no_price_available") + "\n")
 
-        lines.append(f"💡 Use <code>/watch {title}</code> to track this game!")
+        lines.append(t(lang, "search_watch_tip", title=title))
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
-async def _format_multi_region_result(title: str, platform: str, region_results: list) -> str:
+async def _format_multi_region_result(
+    title: str, platform: str, region_results: list, lang: str = "en"
+) -> str:
     """Format a game with prices for every region the user follows."""
     lines = [f"🎮 <b>{title}</b>"]
     if platform:
@@ -460,7 +428,7 @@ async def _format_multi_region_result(title: str, platform: str, region_results:
 
         if r.price is not None:
             if r.price == 0.0:
-                lines.append("💰 Free")
+                lines.append(t(lang, "search_free"))
             else:
                 ils_suffix = await format_price_ils(float(r.price), r.currency)
                 price_line = f"💰 {r.price} {r.currency}{ils_suffix}"
@@ -468,13 +436,13 @@ async def _format_multi_region_result(title: str, platform: str, region_results:
                     price_line += f" (was {r.original_price}) — <b>-{r.discount_percent}%</b>"
                 lines.append(price_line)
         else:
-            lines.append("💰 No active deal")
+            lines.append(t(lang, "search_no_active_deal"))
 
         if psn_link:
             lines.append(f"🛒 <a href='{psn_link}'>PS Store</a>")
         lines.append("")
 
-    lines.append(f"💡 Use <code>/watch {title}</code> to track this game!")
+    lines.append(t(lang, "search_watch_tip", title=title))
     return "\n".join(lines)
 
 
@@ -483,7 +451,6 @@ async def _save_results_to_db(results) -> int:
     saved = 0
     async with get_session() as session:
         for r in results:
-            # Check if game already exists (no duplicates)
             existing = await session.get(Game, r.game_id)
             if not existing:
                 game = Game(
@@ -497,8 +464,6 @@ async def _save_results_to_db(results) -> int:
             elif r.cover_url and not existing.cover_url:
                 existing.cover_url = r.cover_url
 
-            # Save price for every game that has one — even if no discount.
-            # This lets the DB search show full prices, not just "No active deals".
             if r.price is not None:
                 existing_deal_result = await session.execute(
                     select(ActiveDeal).where(
@@ -516,12 +481,11 @@ async def _save_results_to_db(results) -> int:
                         original_price=r.original_price or r.price,
                         discount_percent=r.discount_percent or 0,
                         currency=r.currency,
-                        page_number=0,       # 0 = from search, not from scrape
+                        page_number=0,
                         position_on_page=0,
                     )
                     session.add(deal)
                 else:
-                    # Update price / discount if data changed
                     existing_deal.price = r.price
                     existing_deal.original_price = r.original_price or r.price
                     existing_deal.discount_percent = r.discount_percent or 0
@@ -551,5 +515,4 @@ search_conv_handler = ConversationHandler(
     allow_reentry=True,
 )
 
-# Backward-compatible alias — drop-in replacement in main.py
 search_handler = search_conv_handler
