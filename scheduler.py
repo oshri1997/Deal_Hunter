@@ -13,7 +13,7 @@ from offgamers_checker import check_offgamers_stock
 from engagement import send_engagement_message
 from config import config
 from database.engine import get_session
-from database.models import User
+from database.models import User, Subscriber
 from bot.helpers import get_active_subscriber_ids
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,15 @@ class DealScheduler:
             trigger=CronTrigger(hour=3, minute=0),
             id="cleanup_deals",
             name="Cleanup expired deals",
+            replace_existing=True
+        )
+
+        # Expire cancelled subscriptions after 30-day grace period
+        self.scheduler.add_job(
+            self._expire_cancelled_subscriptions,
+            trigger=CronTrigger(hour=3, minute=30),
+            id="expire_subscriptions",
+            name="Expire cancelled subscriptions (30-day grace)",
             replace_existing=True
         )
 
@@ -144,6 +153,35 @@ class DealScheduler:
             await self.scraper_manager.cleanup_expired_deals()
         except Exception as e:
             logger.error(f"Error in cleanup job: {e}", exc_info=True)
+
+    async def _expire_cancelled_subscriptions(self):
+        """Revoke premium from users whose 30-day grace period has ended."""
+        from datetime import datetime
+        from sqlalchemy import select
+        logger.info("Checking for expired cancelled subscriptions...")
+        try:
+            async with get_session() as session:
+                result = await session.execute(
+                    select(User).where(
+                        User.is_premium == True,
+                        User.premium_expires_at != None,
+                        User.premium_expires_at < datetime.utcnow(),
+                    )
+                )
+                expired_users = result.scalars().all()
+
+                for user in expired_users:
+                    user.is_premium = False
+                    user.is_following = False
+                    # Also deactivate subscriber record if still linked
+                    sub = await session.get(Subscriber, user.id)
+                    if sub:
+                        sub.active = False
+
+            if expired_users:
+                logger.info(f"Expired premium for {len(expired_users)} user(s)")
+        except Exception as e:
+            logger.error(f"Error expiring subscriptions: {e}", exc_info=True)
     
     def _schedule_next_engagement(self):
         """Schedule the next engagement message with a random 4-6 hour interval."""

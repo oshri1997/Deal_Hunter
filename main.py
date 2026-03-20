@@ -29,8 +29,6 @@ from bot.handlers import (
     next_scrape_handler,
     clear_db_handler,
     search_handler,
-    donate_handler,
-    support_handler,
     alert_handler,
     alerts_handler,
     delalert_handler,
@@ -113,8 +111,6 @@ def main():
     application.add_handler(next_scrape_handler)
     application.add_handler(clear_db_handler)
     application.add_handler(search_handler)
-    application.add_handler(donate_handler)
-    application.add_handler(support_handler)
     application.add_handler(alert_handler)
     application.add_handler(alerts_handler)
     application.add_handler(delalert_handler)

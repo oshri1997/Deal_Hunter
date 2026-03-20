@@ -46,6 +46,7 @@ async def init_db():
         # short statement_timeout that can't be overridden.
         migrations = [
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_following BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(2) DEFAULT NULL",
             "ALTER TABLE active_deals ADD COLUMN IF NOT EXISTS pending_notification BOOLEAN NOT NULL DEFAULT FALSE",
             (
                 "CREATE TABLE IF NOT EXISTS subscribers ("

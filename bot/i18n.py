@@ -37,8 +37,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "/subscribe – Subscribe for premium alerts\n"
             "/paid – Notify us after payment\n"
             "/status – Check your subscription status\n"
-            "/unsubscribe – Cancel your subscription\n"
-            "/donate – Support the bot\n\n"
+            "/unsubscribe – Cancel your subscription\n\n"
             '☕ <a href="https://buymeacoffee.com/oshri1997">buymeacoffee.com/oshri1997</a>'
         ),
         # Regions
@@ -167,6 +166,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "subscribe_not_active": "❌ You don't have an active subscription. Use /subscribe to get started.",
         "subscribe_cancelled": (
             "Your subscription has been cancelled.\n\n"
+            "✅ You still have premium access for <b>30 more days</b>.\n"
+            "After that, alerts and premium features will stop.\n\n"
             "⚠️ To stop future payments, also cancel on Buy Me a Coffee:\n"
             "{url}\n"
             "Go to your account → Manage Memberships → Cancel\n\n"
@@ -248,8 +249,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "/subscribe – הרשמה למנוי\n"
             "/paid – דיווח על תשלום\n"
             "/status – בדיקת סטטוס מנוי\n"
-            "/unsubscribe – ביטול מנוי\n"
-            "/donate – תמוך בפיתוח\n\n"
+            "/unsubscribe – ביטול מנוי\n\n"
             '☕ <a href="https://buymeacoffee.com/oshri1997">buymeacoffee.com/oshri1997</a>'
         ),
         # Regions
@@ -378,6 +378,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "subscribe_not_active": "❌ אין לך מנוי פעיל. השתמש ב-/subscribe להתחלה.",
         "subscribe_cancelled": (
             "המנוי שלך בוטל.\n\n"
+            "✅ יש לך גישה לפרימיום עוד <b>30 יום</b>.\n"
+            "לאחר מכן, ההתראות והפיצ'רים הפרימיום יפסקו.\n\n"
             "⚠️ כדי לעצור תשלומים עתידיים, בטל גם ב-Buy Me a Coffee:\n"
             "{url}\n"
             "עבור לחשבון שלך ← Manage Memberships ← Cancel\n\n"

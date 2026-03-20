@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
@@ -182,12 +182,12 @@ async def _cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(lang, "subscribe_not_active_cancel"))
             return
 
+        # Mark subscription as cancelled but keep premium active for 30 days
         subscriber.active = False
 
         user = await session.get(User, user_id)
         if user:
-            user.is_premium = False
-            user.is_following = False
+            user.premium_expires_at = datetime.utcnow() + timedelta(days=30)
 
     await update.message.reply_text(t(lang, "subscribe_cancelled", url=BMC_URL))
 
