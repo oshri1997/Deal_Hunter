@@ -3,12 +3,14 @@ import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 from scraper.manager import ScraperManager
-from amazon_checker import AmazonChecker
+from amazon_checker import AmazonChecker, AMAZON_URL_2
 from offgamers_checker import check_offgamers_stock
 
 logger = logging.getLogger(__name__)
 scraper_manager = ScraperManager()
 amazon_checker = AmazonChecker()
+amazon_checker2 = AmazonChecker()
+amazon_checker2.URL = AMAZON_URL_2
 
 ADMIN_IDS = [680723948]  # Oshri Moaelm
 
@@ -70,6 +72,42 @@ async def _scrape_psp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
         logger.error(f"PSPrices scrape error: {e}", exc_info=True)
+
+
+async def _giftcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show all 3 gift card links with live availability."""
+    await update.message.reply_text("🔍 Checking all gift card sources...")
+    try:
+        avail1, msg1 = await amazon_checker.check_availability()
+        avail2, msg2 = await amazon_checker2.check_availability()
+        try:
+            in_stock, _ = await check_offgamers_stock()
+            og_available = bool(in_stock)
+            og_status = ", ".join(in_stock) if in_stock else "Out of stock"
+        except Exception:
+            og_available = False
+            og_status = "Could not check"
+
+        offgamers_url = "https://www.offgamers.com/product/playstation-store-gift-cards?region_id=492c3ca6-c4e6-47fc-b274-c2c35031b271"
+
+        def icon(ok): return "✅" if ok else "❌"
+
+        text = (
+            f"🎮 <b>PlayStation Gift Cards (India)</b>\n\n"
+            f"{icon(avail1)} <b>Amazon (Cashback)</b>\n"
+            f"   {msg1}\n"
+            f"   🔗 <a href=\"{amazon_checker.URL}\">Buy on Amazon</a>\n\n"
+            f"{icon(avail2)} <b>Amazon ₹1000</b>\n"
+            f"   {msg2}\n"
+            f"   🔗 <a href=\"{AMAZON_URL_2}\">Buy on Amazon</a>\n\n"
+            f"{icon(og_available)} <b>OffGamers</b>\n"
+            f"   {og_status}\n"
+            f"   🔗 <a href=\"{offgamers_url}\">Buy on OffGamers</a>"
+        )
+        await update.message.reply_text(text, parse_mode="HTML", disable_web_page_preview=True)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        logger.error(f"Giftcard check error: {e}", exc_info=True)
 
 
 async def _check_amazon(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,7 +202,7 @@ get_id_handler = CommandHandler("getid", _get_id)
 scrape_now_handler = CommandHandler("scrape_now", _scrape_now)
 scrape_full_handler = CommandHandler("scrape_full", _scrape_full)
 scrape_psp_handler = CommandHandler("scrape_psp", _scrape_psp)
-giftcard_handler = CommandHandler("giftcard", _check_amazon)
+giftcard_handler = CommandHandler("giftcard", _giftcard)
 check_amazon_handler = CommandHandler("check_amazon", _check_amazon)
 offgamers_handler = CommandHandler("offgamers", _check_offgamers)
 next_scrape_handler = CommandHandler("next_scrape", _next_scrape)

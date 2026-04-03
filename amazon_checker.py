@@ -5,6 +5,9 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 
+AMAZON_URL_2 = "https://www.amazon.in/Rs-1000-Sony-PlayStation-Delivery-Digital/dp/B07K6RYVHR"
+
+
 class AmazonChecker:
     URL = "https://www.amazon.in/Playstation-Gift-Redeemable-Flat-Cashback/dp/B0C1H473H8"
     last_status = None

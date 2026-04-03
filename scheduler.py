@@ -8,7 +8,7 @@ from sqlalchemy import select
 from telegram import Bot
 from scraper.manager import ScraperManager
 from notification import NotificationEngine
-from amazon_checker import AmazonChecker
+from amazon_checker import AmazonChecker, AMAZON_URL_2
 from offgamers_checker import check_offgamers_stock
 from engagement import send_engagement_message
 from config import config
@@ -28,6 +28,8 @@ class DealScheduler:
         self.scraper_manager = ScraperManager()
         self.notification_engine = NotificationEngine(bot)
         self.amazon_checker = AmazonChecker()
+        self.amazon_checker2 = AmazonChecker()
+        self.amazon_checker2.URL = AMAZON_URL_2
         self._offgamers_last_status = False
     
     def start(self, run_initial_scrape: bool = True):
@@ -74,6 +76,15 @@ class DealScheduler:
             trigger=IntervalTrigger(minutes=30),
             id="amazon_check",
             name="Check Amazon gift card",
+            replace_existing=True
+        )
+
+        # Check second Amazon gift card every 30 minutes
+        self.scheduler.add_job(
+            self._check_amazon2,
+            trigger=IntervalTrigger(minutes=30),
+            id="amazon_check2",
+            name="Check Amazon gift card 2",
             replace_existing=True
         )
 
@@ -236,6 +247,39 @@ class DealScheduler:
         except Exception as e:
             logger.error(f"Error in Amazon check: {e}", exc_info=True)
 
+    async def _check_amazon2(self):
+        """Check second Amazon India PlayStation gift card availability."""
+        logger.info("Checking Amazon gift card 2...")
+        try:
+            is_available, message = await self.amazon_checker2.check_availability()
+            if is_available and self.amazon_checker2.last_status != True:
+                alert_text = (
+                    f"🎮 <b>Amazon Gift Card (₹1000) IN STOCK!</b>\n\n"
+                    f"Status: {message}\n\n"
+                    f"🛒 Buy now: {AMAZON_URL_2}"
+                )
+                if config.ADMIN_USER_ID:
+                    await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
+                async with get_session() as session:
+                    result = await session.execute(select(User).where(User.is_following == True))
+                    followers = result.scalars().all()
+                subscriber_ids = await get_active_subscriber_ids()
+                for follower in followers:
+                    if follower.id == config.ADMIN_USER_ID:
+                        continue
+                    if follower.id not in subscriber_ids:
+                        continue
+                    try:
+                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
+                        await asyncio.sleep(0.05)
+                    except Exception as e:
+                        logger.error(f"Failed to send Amazon2 alert to {follower.id}: {e}")
+            else:
+                logger.info(f"Amazon2 status: {message}")
+            self.amazon_checker2.last_status = is_available
+        except Exception as e:
+            logger.error(f"Error in Amazon2 check: {e}", exc_info=True)
+
     async def _check_offgamers(self):
         """Check OffGamers stock and notify admin + followers if back in stock."""
         logger.info("Checking OffGamers gift card stock...")
@@ -253,6 +297,20 @@ class DealScheduler:
                 if config.ADMIN_USER_ID:
                     await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
                     logger.info("OffGamers alert sent to admin")
+                async with get_session() as session:
+                    result = await session.execute(select(User).where(User.is_following == True))
+                    followers = result.scalars().all()
+                subscriber_ids = await get_active_subscriber_ids()
+                for follower in followers:
+                    if follower.id == config.ADMIN_USER_ID:
+                        continue
+                    if follower.id not in subscriber_ids:
+                        continue
+                    try:
+                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
+                        await asyncio.sleep(0.05)
+                    except Exception as e:
+                        logger.error(f"Failed to send OffGamers alert to {follower.id}: {e}")
             else:
                 logger.info(f"OffGamers in_stock={in_stock}")
 
