@@ -309,7 +309,7 @@ class DealScheduler:
             is_available, message = await self.amazon_checker3.check_availability()
             if is_available and self.amazon_checker3.last_status != True:
                 alert_text = (
-                    f"🎮 <b>Amazon Gift Card IN STOCK!</b>\n\n"
+                    f"🎮 <b>Amazon Gift Card (₹15,000) IN STOCK!</b>\n\n"
                     f"Status: {message}\n\n"
                     f"🛒 Buy now: {AMAZON_URL_3}"
                 )
@@ -342,7 +342,7 @@ class DealScheduler:
             is_available, message = await self.amazon_checker4.check_availability()
             if is_available and self.amazon_checker4.last_status != True:
                 alert_text = (
-                    f"🎮 <b>Amazon Gift Card IN STOCK!</b>\n\n"
+                    f"🎮 <b>Amazon Gift Card (₹4,000) IN STOCK!</b>\n\n"
                     f"Status: {message}\n\n"
                     f"🛒 Buy now: {AMAZON_URL_4}"
                 )
