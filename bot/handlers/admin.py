@@ -3,7 +3,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 from scraper.manager import ScraperManager
-from amazon_checker import AmazonChecker, AMAZON_URL_2
+from amazon_checker import AmazonChecker, AMAZON_URL_2, AMAZON_URL_3, AMAZON_URL_4
 from offgamers_checker import check_offgamers_stock
 
 logger = logging.getLogger(__name__)
@@ -11,6 +11,10 @@ scraper_manager = ScraperManager()
 amazon_checker = AmazonChecker()
 amazon_checker2 = AmazonChecker()
 amazon_checker2.URL = AMAZON_URL_2
+amazon_checker3 = AmazonChecker()
+amazon_checker3.URL = AMAZON_URL_3
+amazon_checker4 = AmazonChecker()
+amazon_checker4.URL = AMAZON_URL_4
 
 ADMIN_IDS = [680723948]  # Oshri Moaelm
 
@@ -80,6 +84,8 @@ async def _giftcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         avail1, msg1 = await amazon_checker.check_availability()
         avail2, msg2 = await amazon_checker2.check_availability()
+        avail3, msg3 = await amazon_checker3.check_availability()
+        avail4, msg4 = await amazon_checker4.check_availability()
         try:
             in_stock, _ = await check_offgamers_stock()
             og_available = bool(in_stock)
@@ -97,9 +103,15 @@ async def _giftcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{icon(avail1)} <b>Amazon (Cashback)</b>\n"
             f"   {msg1}\n"
             f"   🔗 <a href=\"{amazon_checker.URL}\">Buy on Amazon</a>\n\n"
-            f"{icon(avail2)} <b>Amazon ₹1000</b>\n"
+            f"{icon(avail2)} <b>Amazon ₹1000 (B07K6RYVHR)</b>\n"
             f"   {msg2}\n"
             f"   🔗 <a href=\"{AMAZON_URL_2}\">Buy on Amazon</a>\n\n"
+            f"{icon(avail3)} <b>Amazon (B0GTLJ7ZBP)</b>\n"
+            f"   {msg3}\n"
+            f"   🔗 <a href=\"{AMAZON_URL_3}\">Buy on Amazon</a>\n\n"
+            f"{icon(avail4)} <b>Amazon (B07K6RYVJ5)</b>\n"
+            f"   {msg4}\n"
+            f"   🔗 <a href=\"{AMAZON_URL_4}\">Buy on Amazon</a>\n\n"
             f"{icon(og_available)} <b>OffGamers</b>\n"
             f"   {og_status}\n"
             f"   🔗 <a href=\"{offgamers_url}\">Buy on OffGamers</a>"

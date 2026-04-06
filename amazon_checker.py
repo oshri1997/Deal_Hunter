@@ -6,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 
 AMAZON_URL_2 = "https://www.amazon.in/Rs-1000-Sony-PlayStation-Delivery-Digital/dp/B07K6RYVHR"
+AMAZON_URL_3 = "https://www.amazon.in/dp/B0GTLJ7ZBP"
+AMAZON_URL_4 = "https://www.amazon.in/dp/B07K6RYVJ5"
 
 
 class AmazonChecker:

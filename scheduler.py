@@ -8,7 +8,7 @@ from sqlalchemy import select
 from telegram import Bot
 from scraper.manager import ScraperManager
 from notification import NotificationEngine
-from amazon_checker import AmazonChecker, AMAZON_URL_2
+from amazon_checker import AmazonChecker, AMAZON_URL_2, AMAZON_URL_3, AMAZON_URL_4
 from offgamers_checker import check_offgamers_stock
 from engagement import send_engagement_message
 from config import config
@@ -30,6 +30,10 @@ class DealScheduler:
         self.amazon_checker = AmazonChecker()
         self.amazon_checker2 = AmazonChecker()
         self.amazon_checker2.URL = AMAZON_URL_2
+        self.amazon_checker3 = AmazonChecker()
+        self.amazon_checker3.URL = AMAZON_URL_3
+        self.amazon_checker4 = AmazonChecker()
+        self.amazon_checker4.URL = AMAZON_URL_4
         self._offgamers_last_status = False
     
     def start(self, run_initial_scrape: bool = True):
@@ -85,6 +89,24 @@ class DealScheduler:
             trigger=IntervalTrigger(minutes=30),
             id="amazon_check2",
             name="Check Amazon gift card 2",
+            replace_existing=True
+        )
+
+        # Check third Amazon gift card every 30 minutes
+        self.scheduler.add_job(
+            self._check_amazon3,
+            trigger=IntervalTrigger(minutes=30),
+            id="amazon_check3",
+            name="Check Amazon gift card 3",
+            replace_existing=True
+        )
+
+        # Check fourth Amazon gift card every 30 minutes
+        self.scheduler.add_job(
+            self._check_amazon4,
+            trigger=IntervalTrigger(minutes=30),
+            id="amazon_check4",
+            name="Check Amazon gift card 4",
             replace_existing=True
         )
 
@@ -279,6 +301,72 @@ class DealScheduler:
             self.amazon_checker2.last_status = is_available
         except Exception as e:
             logger.error(f"Error in Amazon2 check: {e}", exc_info=True)
+
+    async def _check_amazon3(self):
+        """Check third Amazon India PlayStation gift card availability."""
+        logger.info("Checking Amazon gift card 3...")
+        try:
+            is_available, message = await self.amazon_checker3.check_availability()
+            if is_available and self.amazon_checker3.last_status != True:
+                alert_text = (
+                    f"🎮 <b>Amazon Gift Card IN STOCK!</b>\n\n"
+                    f"Status: {message}\n\n"
+                    f"🛒 Buy now: {AMAZON_URL_3}"
+                )
+                if config.ADMIN_USER_ID:
+                    await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
+                async with get_session() as session:
+                    result = await session.execute(select(User).where(User.is_following == True))
+                    followers = result.scalars().all()
+                subscriber_ids = await get_active_subscriber_ids()
+                for follower in followers:
+                    if follower.id == config.ADMIN_USER_ID:
+                        continue
+                    if follower.id not in subscriber_ids:
+                        continue
+                    try:
+                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
+                        await asyncio.sleep(0.05)
+                    except Exception as e:
+                        logger.error(f"Failed to send Amazon3 alert to {follower.id}: {e}")
+            else:
+                logger.info(f"Amazon3 status: {message}")
+            self.amazon_checker3.last_status = is_available
+        except Exception as e:
+            logger.error(f"Error in Amazon3 check: {e}", exc_info=True)
+
+    async def _check_amazon4(self):
+        """Check fourth Amazon India PlayStation gift card availability."""
+        logger.info("Checking Amazon gift card 4...")
+        try:
+            is_available, message = await self.amazon_checker4.check_availability()
+            if is_available and self.amazon_checker4.last_status != True:
+                alert_text = (
+                    f"🎮 <b>Amazon Gift Card IN STOCK!</b>\n\n"
+                    f"Status: {message}\n\n"
+                    f"🛒 Buy now: {AMAZON_URL_4}"
+                )
+                if config.ADMIN_USER_ID:
+                    await self.bot.send_message(chat_id=config.ADMIN_USER_ID, text=alert_text, parse_mode="HTML")
+                async with get_session() as session:
+                    result = await session.execute(select(User).where(User.is_following == True))
+                    followers = result.scalars().all()
+                subscriber_ids = await get_active_subscriber_ids()
+                for follower in followers:
+                    if follower.id == config.ADMIN_USER_ID:
+                        continue
+                    if follower.id not in subscriber_ids:
+                        continue
+                    try:
+                        await self.bot.send_message(chat_id=follower.id, text=alert_text, parse_mode="HTML")
+                        await asyncio.sleep(0.05)
+                    except Exception as e:
+                        logger.error(f"Failed to send Amazon4 alert to {follower.id}: {e}")
+            else:
+                logger.info(f"Amazon4 status: {message}")
+            self.amazon_checker4.last_status = is_available
+        except Exception as e:
+            logger.error(f"Error in Amazon4 check: {e}", exc_info=True)
 
     async def _check_offgamers(self):
         """Check OffGamers stock and notify admin + followers if back in stock."""
