@@ -106,7 +106,7 @@ async def _giftcard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{icon(avail2)} <b>Amazon ₹1000 (B07K6RYVHR)</b>\n"
             f"   {msg2}\n"
             f"   🔗 <a href=\"{AMAZON_URL_2}\">Buy on Amazon</a>\n\n"
-            f"{icon(avail3)} <b>Amazon ₹15,000</b>\n"
+            f"{icon(avail3)} <b>Amazon ₹15,000</b> <i>(no feedback for this link)</i>\n"
             f"   {msg3}\n"
             f"   🔗 <a href=\"{AMAZON_URL_3}\">Buy on Amazon</a>\n\n"
             f"{icon(avail4)} <b>Amazon ₹4,000</b>\n"
